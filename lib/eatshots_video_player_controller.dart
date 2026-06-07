@@ -62,6 +62,18 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
       : _dataSource = dataSource,
         super(const EatshotsVideoValue());
 
+  EatshotsVideoPlayerController.networkUrl(Uri url)
+      : _dataSource = url.toString(),
+        super(const EatshotsVideoValue());
+
+  EatshotsVideoPlayerController.file(dynamic file)
+      : _dataSource = 'file://${file.path}',
+        super(const EatshotsVideoValue());
+
+  EatshotsVideoPlayerController.asset(String asset)
+      : _dataSource = 'asset://$asset',
+        super(const EatshotsVideoValue());
+
   int? get textureId => _textureId;
   bool get isDisposed => _isDisposed;
   String get dataSource => _dataSource;
@@ -155,6 +167,19 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
     final id = _textureId;
     if (id == null || _isDisposed) return;
     await EatshotsVideoPlayerPlatform.instance.setPlaybackSpeed(id, speed);
+  }
+
+  Future<void> setVolume(double volume) async {
+    final id = _textureId;
+    if (id == null || _isDisposed) return;
+    await EatshotsVideoPlayerPlatform.instance.setVolume(id, volume);
+  }
+
+  Future<void> setLooping(bool looping) async {
+    final id = _textureId;
+    if (id == null || _isDisposed) return;
+    value = value.copyWith(isLooping: looping);
+    await EatshotsVideoPlayerPlatform.instance.setLooping(id, looping);
   }
 
   Future<void> setDataSource(String url) async {

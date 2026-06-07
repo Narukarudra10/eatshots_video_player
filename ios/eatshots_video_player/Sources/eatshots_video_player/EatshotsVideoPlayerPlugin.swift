@@ -5,6 +5,7 @@ import AVFoundation
 public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
   private let registry: FlutterTextureRegistry
   private let messenger: FlutterBinaryMessenger
+  private let registrar: FlutterPluginRegistrar
   private var players: [Int64: EatshotsVideoPlayer] = [:]
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -16,6 +17,7 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
   init(registrar: FlutterPluginRegistrar) {
     self.registry = registrar.textures()
     self.messenger = registrar.messenger()
+    self.registrar = registrar
     super.init()
   }
 
@@ -33,7 +35,23 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
       }
       
       let textureId = registry.register(nil)
-      let player = EatshotsVideoPlayer(url: url, textureId: textureId, registry: registry, messenger: messenger)
+      let player = EatshotsVideoPlayer(
+        url: url,
+        textureId: textureId,
+        registry: registry,
+        messenger: messenger,
+        urlResolver: { [weak self] url in
+          guard let self = self else { return url }
+          if url.scheme == "asset" {
+            let assetKey = url.absoluteString.replacingOccurrences(of: "asset://", with: "")
+            let key = self.registrar.lookupKey(forAsset: assetKey)
+            if let path = Bundle.main.path(forResource: key, ofType: nil) {
+              return URL(fileURLWithPath: path)
+            }
+          }
+          return url
+        }
+      )
       players[textureId] = player
       registry.textureFrameAvailable(textureId)
       result(textureId)
@@ -74,6 +92,26 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
         return
       }
       player.setPlaybackSpeed(Float(speed))
+      result(nil)
+      
+    case "setVolume":
+      guard let textureId = args?["textureId"] as? Int64,
+            let volume = args?["volume"] as? Double,
+            let player = players[textureId] else {
+        result(FlutterError(code: "NOT_FOUND", message: "Player not found", details: nil))
+        return
+      }
+      player.setVolume(Float(volume))
+      result(nil)
+      
+    case "setLooping":
+      guard let textureId = args?["textureId"] as? Int64,
+            let looping = args?["looping"] as? Bool,
+            let player = players[textureId] else {
+        result(FlutterError(code: "NOT_FOUND", message: "Player not found", details: nil))
+        return
+      }
+      player.setLooping(looping)
       result(nil)
       
     case "getPosition":
@@ -129,10 +167,13 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   private var isInitialized = false
   private var isBuffering = false
   private var playbackSpeed: Float = 1.0
-
-  init(url: URL, textureId: Int64, registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger) {
+  private var isLooping = true
+  private let urlResolver: (URL) -> URL
+  
+  init(url: URL, textureId: Int64, registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger, urlResolver: @escaping (URL) -> URL) {
     self.textureId = textureId
     self.registry = registry
+    self.urlResolver = urlResolver
     super.init()
     
     setupPlayer(url: url)
@@ -149,7 +190,8 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   }
 
   private func setupPlayer(url: URL) {
-    let asset = AVURLAsset(url: url)
+    let resolvedUrl = urlResolver(url)
+    let asset = AVURLAsset(url: resolvedUrl)
     let keys = ["playable", "hasProtectedContent"]
     let item = AVPlayerItem(asset: asset, automaticallyLoadedAssetKeys: keys)
     self.playerItem = item
@@ -216,6 +258,14 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
     }
   }
 
+  func setVolume(_ volume: Float) {
+    player?.volume = volume
+  }
+
+  func setLooping(_ looping: Bool) {
+    isLooping = looping
+  }
+
   func getPosition() -> Int64 {
     guard let player = player else { return 0 }
     let time = player.currentTime()
@@ -238,10 +288,12 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   }
 
   @objc private func itemDidPlayToEndTime(_ notification: Notification) {
-    // Loop automatically for short-form feed
-    seek(to: 0)
-    player?.play()
-    player?.rate = playbackSpeed
+    if isLooping {
+      // Loop automatically for short-form feed
+      seek(to: 0)
+      player?.play()
+      player?.rate = playbackSpeed
+    }
     eventSink?(["event": "completed"])
   }
 

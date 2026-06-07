@@ -108,4 +108,26 @@ class MethodChannelEatshotsVideoPlayer extends EatshotsVideoPlayerPlatform {
       <String, dynamic>{'textureId': textureId},
     );
   }
+
+  @override
+  Future<void> setVolume(int textureId, double volume) async {
+    await methodChannel.invokeMethod<void>(
+      'setVolume',
+      <String, dynamic>{
+        'textureId': textureId,
+        'volume': volume,
+      },
+    );
+  }
+
+  @override
+  Future<void> setLooping(int textureId, bool looping) async {
+    await methodChannel.invokeMethod<void>(
+      'setLooping',
+      <String, dynamic>{
+        'textureId': textureId,
+        'looping': looping,
+      },
+    );
+  }
 }

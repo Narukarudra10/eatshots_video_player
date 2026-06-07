@@ -124,6 +124,36 @@ class EatshotsVideoPlayerPlugin: FlutterPlugin, MethodCallHandler, ActivityAware
           result.error("NOT_FOUND", "Player not found for texture ID: $textureId", null)
         }
       }
+      "setVolume" -> {
+        val textureId = call.argument<Number>("textureId")?.toLong()
+        val volume = call.argument<Number>("volume")?.toDouble()
+        if (textureId == null || volume == null) {
+          result.error("INVALID_ARGUMENT", "Texture ID and Volume cannot be null", null)
+          return
+        }
+        val player = players[textureId]
+        if (player != null) {
+          player.setVolume(volume.toFloat())
+          result.success(null)
+        } else {
+          result.error("NOT_FOUND", "Player not found for texture ID: $textureId", null)
+        }
+      }
+      "setLooping" -> {
+        val textureId = call.argument<Number>("textureId")?.toLong()
+        val looping = call.argument<Boolean>("looping")
+        if (textureId == null || looping == null) {
+          result.error("INVALID_ARGUMENT", "Texture ID and Looping cannot be null", null)
+          return
+        }
+        val player = players[textureId]
+        if (player != null) {
+          player.setLooping(looping)
+          result.success(null)
+        } else {
+          result.error("NOT_FOUND", "Player not found for texture ID: $textureId", null)
+        }
+      }
       "getPosition" -> {
         val textureId = call.argument<Number>("textureId")?.toLong()
         if (textureId == null) {
@@ -326,7 +356,7 @@ class EatshotsVideoPlayer(
                     }
                 })
 
-                val mediaItem = MediaItem.fromUri(url)
+                val mediaItem = getMediaItemForUrl(url)
                 setMediaItem(mediaItem)
                 prepare()
             }
@@ -360,8 +390,26 @@ class EatshotsVideoPlayer(
         exoPlayer?.playbackParameters = PlaybackParameters(speed)
     }
 
+    fun setVolume(volume: Float) {
+        exoPlayer?.volume = volume
+    }
+
+    fun setLooping(looping: Boolean) {
+        exoPlayer?.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
     fun getPosition(): Long {
         return exoPlayer?.currentPosition ?: 0L
+    }
+
+    private fun getMediaItemForUrl(url: String): MediaItem {
+        val resolvedUrl = if (url.startsWith("asset://")) {
+            val assetKey = url.substring("asset://".length)
+            "asset:///flutter_assets/$assetKey"
+        } else {
+            url
+        }
+        return MediaItem.fromUri(resolvedUrl)
     }
 
     fun setDataSource(url: String) {
@@ -371,7 +419,7 @@ class EatshotsVideoPlayer(
             isInitialized = false
             videoWidth = 0
             videoHeight = 0
-            val mediaItem = MediaItem.fromUri(url)
+            val mediaItem = getMediaItemForUrl(url)
             setMediaItem(mediaItem)
             prepare()
         }

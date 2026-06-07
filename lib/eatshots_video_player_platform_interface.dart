@@ -62,4 +62,12 @@ abstract class EatshotsVideoPlayerPlatform extends PlatformInterface {
   Future<void> dispose(int textureId) {
     throw UnimplementedError('dispose() has not been implemented.');
   }
+
+  Future<void> setVolume(int textureId, double volume) {
+    throw UnimplementedError('setVolume() has not been implemented.');
+  }
+
+  Future<void> setLooping(int textureId, bool looping) {
+    throw UnimplementedError('setLooping() has not been implemented.');
+  }
 }
