@@ -38,7 +38,7 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  eatshots_video_player: ^0.0.3
+  eatshots_video_player: ^0.0.4
 ```
 
 ### 2. Basic Usage
