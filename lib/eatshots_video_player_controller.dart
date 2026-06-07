@@ -58,6 +58,11 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
   Timer? _positionTimer;
   bool _isDisposed = false;
 
+  // Track settings to apply them upon initialization
+  double _volume = 1.0;
+  bool _looping = true;
+  bool _shouldPlay = false;
+
   EatshotsVideoPlayerController(String dataSource)
       : _dataSource = dataSource,
         super(const EatshotsVideoValue());
@@ -84,7 +89,7 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
       debugPrint("EatshotsPlayerController: Initializing for $_dataSource");
       final id = await EatshotsVideoPlayerPlatform.instance.initialize(_dataSource);
       _textureId = id;
-      value = value.copyWith(isInitialized: false, errorDescription: null);
+      value = value.copyWith(isInitialized: false, errorDescription: null, isLooping: _looping);
       notifyListeners(); // Notify listeners that textureId is resolved
 
       debugPrint("EatshotsPlayerController: Initialized texture id $id, listening to EventChannel...");
@@ -92,6 +97,16 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
       _eventSubscription = EventChannel('eatshots_video_player/videoEvents_$id')
           .receiveBroadcastStream()
           .listen(_handleEvent, onError: _handleError);
+
+      // Apply pending settings now that textureId is resolved
+      await EatshotsVideoPlayerPlatform.instance.setVolume(id, _volume);
+      await EatshotsVideoPlayerPlatform.instance.setLooping(id, _looping);
+
+      if (_shouldPlay) {
+        await EatshotsVideoPlayerPlatform.instance.play(id);
+        value = value.copyWith(isPlaying: true);
+        _startPositionTimer();
+      }
     } catch (e, stack) {
       debugPrint("EatshotsPlayerController: Initialization failed for $_dataSource: $e\n$stack");
       _handleError(e);
@@ -141,16 +156,20 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
   }
 
   Future<void> play() async {
+    if (_isDisposed) return;
+    _shouldPlay = true;
     final id = _textureId;
-    if (id == null || _isDisposed) return;
+    if (id == null) return;
     await EatshotsVideoPlayerPlatform.instance.play(id);
     value = value.copyWith(isPlaying: true);
     _startPositionTimer();
   }
 
   Future<void> pause() async {
+    if (_isDisposed) return;
+    _shouldPlay = false;
     final id = _textureId;
-    if (id == null || _isDisposed) return;
+    if (id == null) return;
     await EatshotsVideoPlayerPlatform.instance.pause(id);
     value = value.copyWith(isPlaying: false);
     _stopPositionTimer();
@@ -170,15 +189,19 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
   }
 
   Future<void> setVolume(double volume) async {
+    if (_isDisposed) return;
+    _volume = volume;
     final id = _textureId;
-    if (id == null || _isDisposed) return;
+    if (id == null) return;
     await EatshotsVideoPlayerPlatform.instance.setVolume(id, volume);
   }
 
   Future<void> setLooping(bool looping) async {
-    final id = _textureId;
-    if (id == null || _isDisposed) return;
+    if (_isDisposed) return;
+    _looping = looping;
     value = value.copyWith(isLooping: looping);
+    final id = _textureId;
+    if (id == null) return;
     await EatshotsVideoPlayerPlatform.instance.setLooping(id, looping);
   }
 
