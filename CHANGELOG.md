@@ -1,4 +1,11 @@
+## 0.0.7
+
+* Fix Android asset playback:
+  * Wrapped ExoPlayer's CacheDataSource upstream factory with `DefaultDataSource.Factory`.
+  * Resolved `unknown protocol: asset` exception when trying to load local Flutter video assets.
+
 ## 0.0.6
+
 
 * Add macOS platform support:
   * Implemented native macOS video player in Swift using AVFoundation.
