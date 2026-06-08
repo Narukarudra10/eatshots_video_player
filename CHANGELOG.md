@@ -1,4 +1,11 @@
+## 0.0.9
+
+* Optimize video startup latency:
+  * Implemented a custom `DefaultLoadControl` reducing the required startup buffer to `500ms` (down from the default `2.5s`), resulting in near-instant playback.
+  * Optimized `DefaultRenderersFactory` to skip software extension renderer checks, utilizing the platform hardware decoders immediately.
+
 ## 0.0.8
+
 
 * Fix Android Media3 setter bug:
   * Initialized `DefaultMediaSourceFactory` using the constructor that accepts the data source factory directly, bypassing a bug in some Media3 versions where `setDataSourceFactory` is ignored.
