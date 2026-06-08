@@ -1,4 +1,10 @@
+## 0.0.8
+
+* Fix Android Media3 setter bug:
+  * Initialized `DefaultMediaSourceFactory` using the constructor that accepts the data source factory directly, bypassing a bug in some Media3 versions where `setDataSourceFactory` is ignored.
+
 ## 0.0.7
+
 
 * Fix Android asset playback:
   * Wrapped ExoPlayer's CacheDataSource upstream factory with `DefaultDataSource.Factory`.

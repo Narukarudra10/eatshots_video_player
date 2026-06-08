@@ -307,8 +307,9 @@ class EatshotsVideoPlayer(
 
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, cacheDataSourceFactory)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(defaultDataSourceFactory)
+        android.util.Log.d("EatshotsVideoPlayer", "EatshotsVideoPlayer init: URL=$url, defaultDataSourceFactory=$defaultDataSourceFactory")
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(defaultDataSourceFactory)
 
         exoPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
