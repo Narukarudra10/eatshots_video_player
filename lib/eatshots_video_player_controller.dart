@@ -57,6 +57,7 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
   StreamSubscription? _eventSubscription;
   Timer? _positionTimer;
   bool _isDisposed = false;
+  Future<void>? _initializationFuture;
 
   // Track settings to apply them upon initialization
   double _volume = 1.0;
@@ -85,6 +86,11 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
 
   Future<void> initialize() async {
     if (_isDisposed) return;
+    _initializationFuture = _initializeInternal();
+    return _initializationFuture;
+  }
+
+  Future<void> _initializeInternal() async {
     try {
       debugPrint("EatshotsPlayerController: Initializing for $_dataSource");
       final id = await EatshotsVideoPlayerPlatform.instance.initialize(_dataSource);
@@ -110,6 +116,7 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
     } catch (e, stack) {
       debugPrint("EatshotsPlayerController: Initialization failed for $_dataSource: $e\n$stack");
       _handleError(e);
+      rethrow;
     }
   }
 
@@ -206,6 +213,14 @@ class EatshotsVideoPlayerController extends ValueNotifier<EatshotsVideoValue> {
   }
 
   Future<void> setDataSource(String url) async {
+    if (_isDisposed) return;
+    if (_initializationFuture != null) {
+      try {
+        await _initializationFuture;
+      } catch (e) {
+        // Ignore initialization error since we are recycling the player for a new URL
+      }
+    }
     final id = _textureId;
     if (id == null || _isDisposed) return;
     _dataSource = url;

@@ -11,6 +11,9 @@ class EatshotsVideoPlayerPoolManager extends ChangeNotifier {
   // The complete list of video URLs in the feed
   final List<String> urls;
 
+  int? _nextIndexToUpdate;
+  bool _isUpdating = false;
+
   EatshotsVideoPlayerPoolManager({required this.urls});
 
   /// Prefetch the first N bytes of a video to the cache
@@ -26,6 +29,22 @@ class EatshotsVideoPlayerPoolManager extends ChangeNotifier {
   /// Instantiates at most 3 controllers, recycling idle controllers
   /// using URL swapping rather than disposing and recreating them.
   Future<void> updateActiveIndex(int currentIndex) async {
+    _nextIndexToUpdate = currentIndex;
+    if (_isUpdating) return;
+    _isUpdating = true;
+
+    try {
+      while (_nextIndexToUpdate != null) {
+        final targetIndex = _nextIndexToUpdate!;
+        _nextIndexToUpdate = null;
+        await _performUpdate(targetIndex);
+      }
+    } finally {
+      _isUpdating = false;
+    }
+  }
+
+  Future<void> _performUpdate(int currentIndex) async {
     // 1. Identify the 3 desired URLs (previous, current, next)
     final desiredUrls = <String>[];
     if (currentIndex - 1 >= 0) {
