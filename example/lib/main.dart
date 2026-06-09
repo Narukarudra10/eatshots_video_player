@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui';
 import 'package:eatshots_video_player/eatshots_video_player.dart';
 
 void main() {
@@ -139,6 +140,31 @@ class _FeedScreenState extends State<FeedScreen> {
                   isActive: index == _currentIndex,
                 );
               },
+            ),
+
+            // Floating Adaptive Network HUD
+            Positioned(
+              top: 12,
+              left: 16,
+              right: 16,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
+                    ),
+                    child: const NetworkHudWidget(),
+                  ),
+                ),
+              ),
             ),
 
             // Pool Controller Debug Overlay positioned higher up to avoid overlapping bottom controls
@@ -778,6 +804,207 @@ class VideoProgressBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class NetworkHudWidget extends StatelessWidget {
+  const NetworkHudWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final poolManager = Provider.of<EatshotsVideoPlayerPoolManager>(context);
+    final netType = poolManager.effectiveNetworkType;
+    final isSimulated = poolManager.simulatedNetworkType != null;
+
+    IconData netIcon;
+    Color iconColor;
+    String qualityText;
+    String prefetchText;
+    const String latencyText = "Zero-Delay Playback";
+
+    switch (netType) {
+      case 'WIFI':
+        netIcon = Icons.wifi_rounded;
+        iconColor = const Color(0xFF00F2FE); // Cyan
+        qualityText = "1080p Ultra HD (Original)";
+        prefetchText = "1.5MB prefetch • 2 videos ahead";
+        break;
+      case '5G':
+        netIcon = Icons.bolt_rounded;
+        iconColor = const Color(0xFFFFCC00); // Amber/Yellow
+        qualityText = "1080p High Quality";
+        prefetchText = "1.5MB prefetch • 2 videos ahead";
+        break;
+      case '4G':
+        netIcon = Icons.four_g_mobiledata_rounded;
+        iconColor = const Color(0xFFFF2F6D); // Pink
+        qualityText = "720p Balanced HD";
+        prefetchText = "384KB prefetch • 1 video ahead";
+        break;
+      default:
+        netIcon = Icons.signal_cellular_connected_no_internet_4_bar_rounded;
+        iconColor = Colors.grey;
+        qualityText = "480p Data Saver";
+        prefetchText = "128KB prefetch • 1 video ahead";
+        break;
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(netIcon, color: iconColor, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'NETWORK QUALITY: ',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white.withValues(alpha: 0.5),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Text(
+                        isSimulated ? '$netType (Simulated)' : netType,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: iconColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    qualityText,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String?>(
+              tooltip: "Simulate Network Speed",
+              icon: Icon(Icons.settings_input_antenna_rounded, color: Colors.white.withValues(alpha: 0.8)),
+              onSelected: (val) {
+                poolManager.simulatedNetworkType = val;
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: null,
+                  child: Row(
+                    children: [
+                      Icon(Icons.autorenew_rounded, color: Colors.cyan),
+                      SizedBox(width: 8),
+                      Text("Auto-Detect Network"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'WIFI',
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_rounded, color: Colors.lightGreenAccent),
+                      SizedBox(width: 8),
+                      Text("Simulate Wi-Fi"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: '5G',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bolt_rounded, color: Colors.yellowAccent),
+                      SizedBox(width: 8),
+                      Text("Simulate 5G Mobile"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: '4G',
+                  child: Row(
+                    children: [
+                      Icon(Icons.four_g_mobiledata_rounded, color: Colors.pinkAccent),
+                      SizedBox(width: 8),
+                      Text("Simulate 4G Data Saver"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: '3G',
+                  child: Row(
+                    children: [
+                      Icon(Icons.network_check_rounded, color: Colors.orangeAccent),
+                      SizedBox(width: 8),
+                      Text("Simulate 3G Poor Speed"),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                prefetchText,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontFamily: 'monospace',
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF00D26A),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    latencyText,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00D26A),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

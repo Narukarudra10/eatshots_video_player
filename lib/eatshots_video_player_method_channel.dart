@@ -130,4 +130,26 @@ class MethodChannelEatshotsVideoPlayer extends EatshotsVideoPlayerPlatform {
       },
     );
   }
+
+  @override
+  Future<String> getNetworkType() async {
+    try {
+      final networkType = await methodChannel.invokeMethod<String>('getNetworkType');
+      return networkType ?? 'WIFI';
+    } catch (_) {
+      return 'WIFI';
+    }
+  }
+
+  @override
+  Future<void> cancelPrefetch(String url) async {
+    try {
+      await methodChannel.invokeMethod<void>(
+        'cancelPrefetch',
+        <String, dynamic>{'url': url},
+      );
+    } catch (_) {
+      // Ignore cancellation errors
+    }
+  }
 }

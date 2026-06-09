@@ -1,12 +1,17 @@
 import Flutter
 import UIKit
 import AVFoundation
+import Network
+import CoreTelephony
 
 public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
   private let registry: FlutterTextureRegistry
   private let messenger: FlutterBinaryMessenger
   private let registrar: FlutterPluginRegistrar
   private var players: [Int64: EatshotsVideoPlayer] = [:]
+  
+  private let monitor = NWPathMonitor()
+  private var currentConnectionType = "WIFI"
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "eatshots_video_player", binaryMessenger: registrar.messenger())
@@ -19,6 +24,40 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
     self.messenger = registrar.messenger()
     self.registrar = registrar
     super.init()
+    
+    // Start network monitor
+    monitor.pathUpdateHandler = { [weak self] path in
+      guard let self = self else { return }
+      if path.status == .satisfied {
+        if path.usesInterfaceType(.wifi) {
+          self.currentConnectionType = "WIFI"
+        } else if path.usesInterfaceType(.wiredEthernet) {
+          self.currentConnectionType = "WIFI"
+        } else if path.usesInterfaceType(.cellular) {
+          let teleInfo = CTTelephonyNetworkInfo()
+          if #available(iOS 14.1, *) {
+            if let activeDataId = teleInfo.dataServiceIdentifier,
+               let carrierInfo = teleInfo.serviceCurrentRadioAccessTechnology,
+               let tech = carrierInfo[activeDataId] {
+              if tech == CTRadioAccessTechnologyNR || tech == CTRadioAccessTechnologyNRNSA {
+                self.currentConnectionType = "5G"
+              } else {
+                self.currentConnectionType = "4G"
+              }
+            } else {
+              self.currentConnectionType = "4G"
+            }
+          } else {
+            self.currentConnectionType = "4G"
+          }
+        } else {
+          self.currentConnectionType = "NONE"
+        }
+      } else {
+        self.currentConnectionType = "NONE"
+      }
+    }
+    monitor.start(queue: DispatchQueue.global(qos: .background))
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -137,6 +176,12 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
       // iOS prefetching is handled by the default URL cache and AVPlayerItem buffering
       // Nothing special needed here unless aggressive pre-downloads are requested
       result(nil)
+      
+    case "cancelPrefetch":
+      result(nil)
+      
+    case "getNetworkType":
+      result(currentConnectionType)
       
     case "dispose":
       guard let textureId = args?["textureId"] as? Int64,

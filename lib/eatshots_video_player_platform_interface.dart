@@ -70,4 +70,12 @@ abstract class EatshotsVideoPlayerPlatform extends PlatformInterface {
   Future<void> setLooping(int textureId, bool looping) {
     throw UnimplementedError('setLooping() has not been implemented.');
   }
+
+  Future<String> getNetworkType() {
+    throw UnimplementedError('getNetworkType() has not been implemented.');
+  }
+
+  Future<void> cancelPrefetch(String url) {
+    throw UnimplementedError('cancelPrefetch() has not been implemented.');
+  }
 }

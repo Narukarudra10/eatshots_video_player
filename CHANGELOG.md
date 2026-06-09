@@ -1,3 +1,12 @@
+## 0.1.0
+
+* Cellular Network Optimization & adaptive zero-delay playback:
+  * Added native network connectivity checks (Wi-Fi, 5G, 4G, 3G) using `ConnectivityManager` link bandwidth estimation on Android, and `NWPathMonitor` framework on iOS/macOS.
+  * Implemented dynamic ExoPlayer buffer adjustment: fast startup buffers on Wi-Fi (800ms) and safer buffers (2000-3000ms) on cellular to prevent playback stutters under jitter.
+  * Implemented active prefetch cancellation when scrolling fast via native `CacheWriter.cancel()`.
+  * Added adaptive prefetching sizes and queue depths based on network speeds (1.5MB for Wi-Fi/5G, 384KB for 4G, 128KB for 3G).
+  * Added floating glassmorphic Network Quality HUD overlay and simulated connection speed controls in example app.
+
 ## 0.0.9
 
 * Optimize video startup latency:

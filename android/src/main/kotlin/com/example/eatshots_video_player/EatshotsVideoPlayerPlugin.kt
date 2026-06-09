@@ -194,6 +194,18 @@ class EatshotsVideoPlayerPlugin: FlutterPlugin, MethodCallHandler, ActivityAware
         VideoCache.prefetch(context, url, bytes)
         result.success(null)
       }
+      "cancelPrefetch" -> {
+        val url = call.argument<String>("url")
+        if (url == null) {
+          result.error("INVALID_ARGUMENT", "URL cannot be null for cancelPrefetch", null)
+          return
+        }
+        VideoCache.cancelPrefetch(url)
+        result.success(null)
+      }
+      "getNetworkType" -> {
+        result.success(VideoCache.getNetworkType(context))
+      }
       "dispose" -> {
         val textureId = call.argument<Number>("textureId")?.toLong()
         if (textureId == null) {
@@ -312,12 +324,23 @@ class EatshotsVideoPlayer(
 
         val mediaSourceFactory = DefaultMediaSourceFactory(defaultDataSourceFactory)
 
+        val networkType = VideoCache.getNetworkType(context)
+        val isHighSpeed = networkType == "WIFI" || networkType == "5G"
+        val isMediumSpeed = networkType == "4G"
+        
+        val minBufferMs = if (isHighSpeed) 15000 else if (isMediumSpeed) 20000 else 25000
+        val maxBufferMs = if (isHighSpeed) 30000 else if (isMediumSpeed) 40000 else 50000
+        val bufferForPlaybackMs = if (isHighSpeed) 800 else if (isMediumSpeed) 2000 else 3000
+        val bufferForPlaybackAfterRebufferMs = if (isHighSpeed) 1500 else if (isMediumSpeed) 3000 else 4500
+
+        android.util.Log.d("EatshotsVideoPlayer", "EatshotsVideoPlayer init: URL=$url, NetworkType=$networkType, Buffers=[min:$minBufferMs, max:$maxBufferMs, play:$bufferForPlaybackMs, rebuffer:$bufferForPlaybackAfterRebufferMs]")
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15000, // minBufferMs
-                30000, // maxBufferMs
-                500,   // bufferForPlaybackMs
-                1000   // bufferForPlaybackAfterRebufferMs
+                minBufferMs,
+                maxBufferMs,
+                bufferForPlaybackMs,
+                bufferForPlaybackAfterRebufferMs
             )
             .build()
 
