@@ -1,3 +1,8 @@
+## 0.1.3
+
+* Android Build Fix:
+  * Added missing `android.net.ConnectivityManager` import in `EatshotsVideoPlayerPlugin.kt` to resolve Gradle Kotlin compiler errors.
+
 ## 0.1.2
 
 * Connection-Aware Native Caching & Performance Optimizations:

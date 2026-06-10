@@ -3,6 +3,7 @@ package com.example.eatshots_video_player
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Bundle
 import android.view.Surface
 import androidx.annotation.OptIn

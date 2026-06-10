@@ -1,6 +1,6 @@
 name: eatshots_video_player
 description: "A high-performance, Reels-style short-form video player plugin for Flutter, optimized with aggressive caching, background prefetching, and native controller pooling."
-version: 0.1.2
+version: 0.1.3
 homepage: https://github.com/Narukarudra10/eatshots_video_player
 repository: https://github.com/Narukarudra10/eatshots_video_player
 
