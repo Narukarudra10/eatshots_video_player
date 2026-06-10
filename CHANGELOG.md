@@ -1,3 +1,9 @@
+## 0.1.5
+
+* iOS Xcode Build Fix:
+  * Resolved Swift compilation error (`'nil' is not compatible with expected argument type 'any FlutterTexture'`) in `EatshotsVideoPlayerPlugin.swift`.
+  * Refactored `EatshotsVideoPlayer` initialization to register the player instance with the texture registry after initialization, matching the macOS plugin implementation pattern.
+
 ## 0.1.4
 
 * Native Lifecycle & Log Warning Fixes:

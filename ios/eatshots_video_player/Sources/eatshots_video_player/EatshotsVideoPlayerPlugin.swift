@@ -98,10 +98,8 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHa
         return
       }
       
-      let textureId = registry.register(nil)
       let player = EatshotsVideoPlayer(
         url: url,
-        textureId: textureId,
         registry: registry,
         messenger: messenger,
         urlResolver: { [weak self] url in
@@ -116,6 +114,9 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHa
           return url
         }
       )
+      
+      let textureId = registry.register(player)
+      player.setTextureId(textureId)
       players[textureId] = player
       registry.textureFrameAvailable(textureId)
       result(textureId)
@@ -230,7 +231,7 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHa
 }
 
 class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
-  private let textureId: Int64
+  private var textureId: Int64 = -1
   private weak var registry: FlutterTextureRegistry?
   private var player: AVPlayer?
   private var playerItem: AVPlayerItem?
@@ -245,24 +246,25 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   private var isLooping = true
   private let urlResolver: (URL) -> URL
   private var resourceLoaderDelegate: EatshotsResourceLoaderDelegate? // Strong reference
+  private let messenger: FlutterBinaryMessenger
   
-  init(url: URL, textureId: Int64, registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger, urlResolver: @escaping (URL) -> URL) {
-    self.textureId = textureId
+  init(url: URL, registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger, urlResolver: @escaping (URL) -> URL) {
     self.registry = registry
+    self.messenger = messenger
     self.urlResolver = urlResolver
     super.init()
     
     setupPlayer(url: url)
     
-    self.eventChannel = FlutterEventChannel(name: "eatshots_video_player/videoEvents_\(textureId)", binaryMessenger: messenger)
-    self.eventChannel?.setStreamHandler(self)
-    
-    // Registry self as the texture provider
-    registry.register(self)
-    
     self.displayLink = CADisplayLink(target: self, selector: #selector(onDisplayLink(_:)))
     self.displayLink?.add(to: .main, forMode: .common)
     self.displayLink?.isPaused = true
+  }
+
+  func setTextureId(_ textureId: Int64) {
+    self.textureId = textureId
+    self.eventChannel = FlutterEventChannel(name: "eatshots_video_player/videoEvents_\(textureId)", binaryMessenger: messenger)
+    self.eventChannel?.setStreamHandler(self)
   }
 
   private func setupPlayer(url: URL) {
