@@ -1,3 +1,9 @@
+## 0.1.4
+
+* Native Lifecycle & Log Warning Fixes:
+  * Implemented `onActivityPaused` callback inside the Android native Activity callbacks to loop through all active players and trigger a native pause.
+  * Added `handleActivityPaused()` in the `EatshotsVideoPlayer` class, which calls `exoPlayer?.playWhenReady = false` to stop frame decoding before the OS suspends the graphics surface rendering, preventing "pipeline full" log warnings.
+
 ## 0.1.3
 
 * Android Build Fix:

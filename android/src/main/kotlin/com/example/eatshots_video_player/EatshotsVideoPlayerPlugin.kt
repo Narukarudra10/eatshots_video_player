@@ -326,7 +326,13 @@ class EatshotsVideoPlayerPlugin: FlutterPlugin, MethodCallHandler, ActivityAware
 
   override fun onActivityCreated(a: Activity, savedInstanceState: Bundle?) {}
   override fun onActivityStarted(a: Activity) {}
-  override fun onActivityPaused(a: Activity) {}
+  override fun onActivityPaused(a: Activity) {
+    if (a == activity) {
+      for (player in players.values) {
+        player.handleActivityPaused()
+      }
+    }
+  }
   override fun onActivityStopped(a: Activity) {}
   override fun onActivitySaveInstanceState(a: Activity, outState: Bundle) {}
   override fun onActivityDestroyed(a: Activity) {}
@@ -538,6 +544,10 @@ class EatshotsVideoPlayer(
         surface?.release()
         surface = Surface(surfaceTexture)
         exoPlayer?.setVideoSurface(surface)
+    }
+
+    fun handleActivityPaused() {
+        exoPlayer?.playWhenReady = false
     }
 
     fun dispose() {
