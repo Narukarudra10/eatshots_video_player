@@ -1,3 +1,9 @@
+## 0.1.1
+
+* Fix diagonal rendering shearing and green lines glitch:
+  * Dynamically resize the `SurfaceTexture` default buffer size to match actual video dimensions on Android.
+  * Resolves layout/stride mismatch rendering artifacts on certain GPUs (such as Mali and PowerVR) common in Redmi/Xiaomi devices.
+
 ## 0.1.0
 
 * Cellular Network Optimization & adaptive zero-delay playback:

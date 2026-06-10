@@ -380,6 +380,13 @@ class EatshotsVideoPlayer(
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
                         videoWidth = videoSize.width
                         videoHeight = videoSize.height
+                        if (videoWidth > 0 && videoHeight > 0) {
+                            try {
+                                textureEntry.surfaceTexture().setDefaultBufferSize(videoWidth, videoHeight)
+                            } catch (e: Exception) {
+                                android.util.Log.e("EatshotsVideoPlayer", "Failed to set default buffer size", e)
+                            }
+                        }
                         if (isInitialized && videoWidth > 0 && videoHeight > 0) {
                             sendInitializedEvent()
                         }
