@@ -50,7 +50,7 @@ Add `eatshots_video_player` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  eatshots_video_player: ^0.1.1
+  eatshots_video_player: ^0.1.2
 ```
 
 ### 2. Import
@@ -253,6 +253,3 @@ Manages native video player recycling, caching, and network-aware prefetching.
 
 ---
 
-## 📄 License
-
-This project is licensed under the MIT License. See the [LICENSE](file:///e:/projects/eatshots_video_player/LICENSE) file for details.

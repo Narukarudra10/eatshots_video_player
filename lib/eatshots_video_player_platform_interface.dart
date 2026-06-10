@@ -78,4 +78,8 @@ abstract class EatshotsVideoPlayerPlatform extends PlatformInterface {
   Future<void> cancelPrefetch(String url) {
     throw UnimplementedError('cancelPrefetch() has not been implemented.');
   }
+
+  Stream<String> get onNetworkTypeChanged {
+    throw UnimplementedError('onNetworkTypeChanged has not been implemented.');
+  }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'eatshots_video_player_controller.dart';
@@ -29,8 +30,17 @@ class EatshotsVideoPlayerPoolManager extends ChangeNotifier {
 
   // A set to track urls that are currently undergoing background prefetching
   final Set<String> _activePrefetches = {};
+  
+  StreamSubscription<String>? _networkSubscription;
 
-  EatshotsVideoPlayerPoolManager({required this.urls});
+  EatshotsVideoPlayerPoolManager({required this.urls}) {
+    _networkSubscription = EatshotsVideoPlayerPlatform.instance.onNetworkTypeChanged.listen((netType) {
+      if (_networkType != netType) {
+        _networkType = netType;
+        notifyListeners();
+      }
+    });
+  }
 
   /// Prefetch the first N bytes of a video to the cache
   Future<void> prefetch(String url, {required int bytes}) async {
@@ -172,6 +182,8 @@ class EatshotsVideoPlayerPoolManager extends ChangeNotifier {
   /// Clear resources and dispose all controllers
   @override
   Future<void> dispose() async {
+    await _networkSubscription?.cancel();
+    _networkSubscription = null;
     _activePrefetches.clear();
     _activeControllers.clear();
     for (final controller in _pool) {

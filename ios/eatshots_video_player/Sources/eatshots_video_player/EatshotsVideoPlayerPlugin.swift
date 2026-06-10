@@ -4,7 +4,7 @@ import AVFoundation
 import Network
 import CoreTelephony
 
-public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
+public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private let registry: FlutterTextureRegistry
   private let messenger: FlutterBinaryMessenger
   private let registrar: FlutterPluginRegistrar
@@ -12,6 +12,8 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
   
   private let monitor = NWPathMonitor()
   private var currentConnectionType = "WIFI"
+  private var networkEventChannel: FlutterEventChannel?
+  private var networkEventSink: FlutterEventSink?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "eatshots_video_player", binaryMessenger: registrar.messenger())
@@ -25,14 +27,19 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
     self.registrar = registrar
     super.init()
     
+    let netChannel = FlutterEventChannel(name: "eatshots_video_player/network_events", binaryMessenger: registrar.messenger())
+    self.networkEventChannel = netChannel
+    netChannel.setStreamHandler(self)
+    
     // Start network monitor
     monitor.pathUpdateHandler = { [weak self] path in
       guard let self = self else { return }
+      let newType: String
       if path.status == .satisfied {
         if path.usesInterfaceType(.wifi) {
-          self.currentConnectionType = "WIFI"
+          newType = "WIFI"
         } else if path.usesInterfaceType(.wiredEthernet) {
-          self.currentConnectionType = "WIFI"
+          newType = "WIFI"
         } else if path.usesInterfaceType(.cellular) {
           let teleInfo = CTTelephonyNetworkInfo()
           if #available(iOS 14.1, *) {
@@ -40,24 +47,42 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
                let carrierInfo = teleInfo.serviceCurrentRadioAccessTechnology,
                let tech = carrierInfo[activeDataId] {
               if tech == CTRadioAccessTechnologyNR || tech == CTRadioAccessTechnologyNRNSA {
-                self.currentConnectionType = "5G"
+                newType = "5G"
               } else {
-                self.currentConnectionType = "4G"
+                newType = "4G"
               }
             } else {
-              self.currentConnectionType = "4G"
+              newType = "4G"
             }
           } else {
-            self.currentConnectionType = "4G"
+            newType = "4G"
           }
         } else {
-          self.currentConnectionType = "NONE"
+          newType = "NONE"
         }
       } else {
-        self.currentConnectionType = "NONE"
+        newType = "NONE"
+      }
+      
+      self.currentConnectionType = newType
+      if let sink = self.networkEventSink {
+        DispatchQueue.main.async {
+          sink(newType)
+        }
       }
     }
     monitor.start(queue: DispatchQueue.global(qos: .background))
+  }
+
+  public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    self.networkEventSink = events
+    events(self.currentConnectionType)
+    return nil
+  }
+
+  public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    self.networkEventSink = nil
+    return nil
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -172,9 +197,14 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin {
       player.setDataSource(url)
       result(nil)
       
-    case "prefetch":
-      // iOS prefetching is handled by the default URL cache and AVPlayerItem buffering
-      // Nothing special needed here unless aggressive pre-downloads are requested
+        case "prefetch":
+      guard let urlString = args?["url"] as? String,
+            let url = URL(string: urlString) else {
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "URL is invalid", details: nil))
+        return
+      }
+      let bytes = args?["bytes"] as? Int ?? (1024 * 1024)
+      EatshotsResourceLoaderDelegate.prefetch(url: url, bytes: bytes)
       result(nil)
       
     case "cancelPrefetch":
@@ -214,6 +244,7 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   private var playbackSpeed: Float = 1.0
   private var isLooping = true
   private let urlResolver: (URL) -> URL
+  private var resourceLoaderDelegate: EatshotsResourceLoaderDelegate? // Strong reference
   
   init(url: URL, textureId: Int64, registry: FlutterTextureRegistry, messenger: FlutterBinaryMessenger, urlResolver: @escaping (URL) -> URL) {
     self.textureId = textureId
@@ -236,7 +267,23 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
 
   private func setupPlayer(url: URL) {
     let resolvedUrl = urlResolver(url)
-    let asset = AVURLAsset(url: resolvedUrl)
+    
+    let asset: AVURLAsset
+    if resolvedUrl.scheme == "http" || resolvedUrl.scheme == "https" {
+      var components = URLComponents(url: resolvedUrl, resolvingAgainstBaseURL: false)
+      components?.scheme = "eatshotscache"
+      if let customUrl = components?.url {
+        asset = AVURLAsset(url: customUrl)
+        let delegate = EatshotsResourceLoaderDelegate()
+        asset.resourceLoader.setDelegate(delegate, queue: DispatchQueue.global(qos: .userInitiated))
+        self.resourceLoaderDelegate = delegate
+      } else {
+        asset = AVURLAsset(url: resolvedUrl)
+      }
+    } else {
+      asset = AVURLAsset(url: resolvedUrl)
+    }
+    
     let keys = ["playable", "hasProtectedContent"]
     let item = AVPlayerItem(asset: asset, automaticallyLoadedAssetKeys: keys)
     self.playerItem = item
@@ -422,4 +469,146 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
     playerItem = nil
     videoOutput = nil
   }
+}
+
+class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, URLSessionDataDelegate {
+    private var taskMap = [AVAssetResourceLoadingRequest: URLSessionDataTask]()
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.default
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+    
+    // Cache directory path
+    private static var cacheDirectory: URL {
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("eatshots_video_cache")
+    }
+    
+    override init() {
+        super.init()
+        try? FileManager.default.createDirectory(at: EatshotsResourceLoaderDelegate.cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+    }
+    
+    static func getSafeFileName(for url: URL) -> String {
+        let regex = try! NSRegularExpression(pattern: "[^a-zA-Z0-9]", options: .caseInsensitive)
+        let str = url.absoluteString
+        let modString = regex.stringByReplacingMatches(in: str, options: [], range: NSRange(0..<str.utf16.count), withTemplate: "_")
+        return String(modString.suffix(100)) + ".mp4"
+    }
+    
+    static func getCachedFileUrl(for url: URL) -> URL? {
+        let fileManager = FileManager.default
+        let safeName = getSafeFileName(for: url)
+        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
+        if fileManager.fileExists(atPath: fileUrl.path) {
+            return fileUrl
+        }
+        return nil
+    }
+    
+    static func prefetch(url: URL, bytes: Int) {
+        let safeName = getSafeFileName(for: url)
+        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
+        if FileManager.default.fileExists(atPath: fileUrl.path) {
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("bytes=0-\(bytes)", forHTTPHeaderField: "Range")
+        let task = URLSession.shared.downloadTask(with: request) { tempUrl, response, error in
+            guard let tempUrl = tempUrl, error == nil else { return }
+            try? FileManager.default.moveItem(at: tempUrl, to: fileUrl)
+        }
+        task.resume()
+    }
+    
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
+        guard let originalUrl = loadingRequest.request.url else { return false }
+        
+        var components = URLComponents(url: originalUrl, resolvingAgainstBaseURL: false)
+        components?.scheme = "https"
+        guard let httpUrl = components?.url else { return false }
+        
+        if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: httpUrl) {
+            serveLocalFile(localUrl, loadingRequest: loadingRequest)
+            return true
+        }
+        
+        startStreamingRequest(httpUrl, loadingRequest: loadingRequest)
+        return true
+    }
+    
+    func resourceLoader(_ resourceLoader: AVAssetResourceLoader, didCancel loadingRequest: AVAssetResourceLoadingRequest) {
+        if let task = taskMap.removeValue(forKey: loadingRequest) {
+            task.cancel()
+        }
+    }
+    
+    private func serveLocalFile(_ localUrl: URL, loadingRequest: AVAssetResourceLoadingRequest) {
+        guard let data = try? Data(contentsOf: localUrl) else {
+            loadingRequest.finishLoading(with: NSError(domain: "eatshotscache", code: -1, userInfo: nil))
+            return
+        }
+        
+        if let contentRequest = loadingRequest.contentInformationRequest {
+            contentRequest.contentType = "video/mp4"
+            contentRequest.contentLength = Int64(data.count)
+            contentRequest.isByteRangeAccessSupported = true
+        }
+        
+        if let dataRequest = loadingRequest.dataRequest {
+            let offset = Int(dataRequest.requestedOffset)
+            let length = Int(dataRequest.requestedLength)
+            if offset + length <= data.count {
+                let chunk = data.subdata(in: offset..<(offset + length))
+                dataRequest.respond(with: chunk)
+                loadingRequest.finishLoading()
+            } else {
+                loadingRequest.finishLoading()
+            }
+        }
+    }
+    
+    private func startStreamingRequest(_ httpUrl: URL, loadingRequest: AVAssetResourceLoadingRequest) {
+        var request = URLRequest(url: httpUrl)
+        if let dataRequest = loadingRequest.dataRequest {
+            let offset = dataRequest.requestedOffset
+            let length = dataRequest.requestedLength
+            request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
+        }
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            defer { self.taskMap.removeValue(forKey: loadingRequest) }
+            
+            if let error = error {
+                loadingRequest.finishLoading(with: error)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if let contentRequest = loadingRequest.contentInformationRequest {
+                    contentRequest.contentType = httpResponse.allHeaderFields["Content-Type"] as? String ?? "video/mp4"
+                    let contentRange = httpResponse.allHeaderFields["Content-Range"] as? String
+                    if let totalLengthStr = contentRange?.split(separator: "/").last, let totalLength = Int64(totalLengthStr) {
+                        contentRequest.contentLength = totalLength
+                    } else {
+                        contentRequest.contentLength = httpResponse.expectedContentLength
+                    }
+                    contentRequest.isByteRangeAccessSupported = true
+                }
+            }
+            
+            if let data = data, let dataRequest = loadingRequest.dataRequest {
+                dataRequest.respond(with: data)
+                loadingRequest.finishLoading()
+                
+                if dataRequest.requestedOffset == 0 {
+                    let safeName = EatshotsResourceLoaderDelegate.getSafeFileName(for: httpUrl)
+                    let fileUrl = EatshotsResourceLoaderDelegate.cacheDirectory.appendingPathComponent(safeName)
+                    try? data.write(to: fileUrl)
+                }
+            }
+        }
+        taskMap[loadingRequest] = task
+        task.resume()
+    }
 }

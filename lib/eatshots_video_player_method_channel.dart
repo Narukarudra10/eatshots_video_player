@@ -152,4 +152,15 @@ class MethodChannelEatshotsVideoPlayer extends EatshotsVideoPlayerPlatform {
       // Ignore cancellation errors
     }
   }
+
+  final _networkEventChannel = const EventChannel('eatshots_video_player/network_events');
+  Stream<String>? _onNetworkTypeChanged;
+
+  @override
+  Stream<String> get onNetworkTypeChanged {
+    _onNetworkTypeChanged ??= _networkEventChannel
+        .receiveBroadcastStream()
+        .map((event) => event as String);
+    return _onNetworkTypeChanged!;
+  }
 }

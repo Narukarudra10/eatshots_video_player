@@ -1,3 +1,12 @@
+## 0.1.2
+
+* Connection-Aware Native Caching & Performance Optimizations:
+  * Implemented an EventChannel stream (`eatshots_video_player/network_events`) on Android and iOS to broadcast network connection status reactively to Dart.
+  * Added native bandwidth estimation using ExoPlayer's `DefaultBandwidthMeter` on Android to dynamically adjust background prefetch sizes based on real-time speeds.
+  * Implemented `AVAssetResourceLoaderDelegate` (`EatshotsResourceLoaderDelegate`) in Swift on iOS to cache progressive streaming MP4 videos directly to the local disk caches directory.
+  * Optimized ExoPlayer's load control buffering settings for fast startup: reduced initial play buffer to 250ms on Wi-Fi and 500ms on Cellular data.
+  * Corrected buffering visibility logic in the video player widget to avoid showing the starting thumbnail during buffer stalls.
+
 ## 0.1.1
 
 * Fix diagonal rendering shearing and green lines glitch:

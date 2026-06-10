@@ -15,6 +15,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 object VideoCache {
     private var cache: SimpleCache? = null
     private val activePrefetches = ConcurrentHashMap<String, CacheWriter>()
+    private var bandwidthMeter: DefaultBandwidthMeter? = null
 
     @Synchronized
     fun getCache(context: Context): SimpleCache {
@@ -34,22 +36,53 @@ object VideoCache {
         return cache!!
     }
 
+    @Synchronized
+    fun getBandwidthMeter(context: Context): DefaultBandwidthMeter {
+        if (bandwidthMeter == null) {
+            bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
+        }
+        return bandwidthMeter!!
+    }
+
     fun prefetch(context: Context, url: String, prefetchBytes: Long) {
         if (activePrefetches.containsKey(url)) {
             android.util.Log.d("VideoCache", "Prefetch already active for $url")
             return
         }
 
+        // Dynamic prefetch size based on bandwidth meter or network type
+        val estimatedBitrate = getBandwidthMeter(context).bitrateEstimate
+        val finalPrefetchBytes = if (estimatedBitrate > 0) {
+            if (estimatedBitrate >= 10_000_000) { // >= 10 Mbps (WiFi / 5G speed)
+                1500 * 1024L // 1.5 MB
+            } else if (estimatedBitrate >= 2_000_000) { // >= 2 Mbps (4G speed)
+                500 * 1024L // 500 KB
+            } else {
+                128 * 1024L // 128 KB
+            }
+        } else {
+            // Fallback to connection-type based estimate
+            val netType = getNetworkType(context)
+            if (netType == "WIFI" || netType == "5G") {
+                1500 * 1024L
+            } else if (netType == "4G") {
+                500 * 1024L
+            } else {
+                128 * 1024L
+            }
+        }
+
         val uri = Uri.parse(url)
         val dataSpec = DataSpec.Builder()
             .setUri(uri)
             .setPosition(0)
-            .setLength(prefetchBytes)
+            .setLength(finalPrefetchBytes)
             .build()
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
+            .setTransferListener(getBandwidthMeter(context))
 
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
@@ -66,12 +99,12 @@ object VideoCache {
         )
 
         activePrefetches[url] = cacheWriter
-        android.util.Log.d("VideoCache", "Starting prefetch for $url of $prefetchBytes bytes")
+        android.util.Log.d("VideoCache", "Starting prefetch for $url of $finalPrefetchBytes bytes (est bitrate: $estimatedBitrate)")
 
         Thread {
             try {
                 cacheWriter.cache()
-                android.util.Log.d("VideoCache", "Successfully prefetched $prefetchBytes bytes for $url")
+                android.util.Log.d("VideoCache", "Successfully prefetched $finalPrefetchBytes bytes for $url")
             } catch (e: Exception) {
                 android.util.Log.e("VideoCache", "Prefetch failed or cancelled for $url: ${e.message}")
             } finally {

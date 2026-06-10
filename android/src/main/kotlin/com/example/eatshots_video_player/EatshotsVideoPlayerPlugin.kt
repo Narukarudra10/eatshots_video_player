@@ -39,12 +39,71 @@ class EatshotsVideoPlayerPlugin: FlutterPlugin, MethodCallHandler, ActivityAware
   private val players = HashMap<Long, EatshotsVideoPlayer>()
   private var activity: Activity? = null
 
+  private var networkEventChannel: EventChannel? = null
+  private var networkEventSink: EventChannel.EventSink? = null
+  private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "eatshots_video_player")
     channel.setMethodCallHandler(this)
     context = flutterPluginBinding.applicationContext
     textureRegistry = flutterPluginBinding.textureRegistry
     binaryMessenger = flutterPluginBinding.binaryMessenger
+
+    networkEventChannel = EventChannel(flutterPluginBinding.binaryMessenger, "eatshots_video_player/network_events")
+    networkEventChannel?.setStreamHandler(object : EventChannel.StreamHandler {
+        override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+            networkEventSink = sink
+            sendNetworkUpdate()
+            startNetworkMonitoring()
+        }
+
+        override fun onCancel(arguments: Any?) {
+            stopNetworkMonitoring()
+            networkEventSink = null
+        }
+    })
+  }
+
+  private fun startNetworkMonitoring() {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+    val request = android.net.NetworkRequest.Builder().build()
+    networkCallback = object : ConnectivityManager.NetworkCallback() {
+      override fun onAvailable(network: android.net.Network) {
+        sendNetworkUpdate()
+      }
+      override fun onLost(network: android.net.Network) {
+        sendNetworkUpdate()
+      }
+      override fun onCapabilitiesChanged(network: android.net.Network, networkCapabilities: android.net.NetworkCapabilities) {
+        sendNetworkUpdate()
+      }
+    }
+    try {
+      cm.registerNetworkCallback(request, networkCallback!!)
+    } catch (e: Exception) {
+      android.util.Log.e("EatshotsVideoPlayer", "Failed to register network callback: ${e.message}")
+    }
+  }
+
+  private fun stopNetworkMonitoring() {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+    networkCallback?.let {
+      try {
+        cm.unregisterNetworkCallback(it)
+      } catch (e: Exception) {
+        // Ignore
+      }
+    }
+    networkCallback = null
+  }
+
+  private fun sendNetworkUpdate() {
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    handler.post {
+      val type = VideoCache.getNetworkType(context)
+      networkEventSink?.success(type)
+    }
   }
 
   override fun onMethodCall(call: MethodCall, result: Result) {
@@ -228,6 +287,9 @@ class EatshotsVideoPlayerPlugin: FlutterPlugin, MethodCallHandler, ActivityAware
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
+    networkEventChannel?.setStreamHandler(null)
+    networkEventChannel = null
+    stopNetworkMonitoring()
     for (player in players.values) {
       player.dispose()
     }
@@ -312,6 +374,7 @@ class EatshotsVideoPlayer(
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
+            .setTransferListener(VideoCache.getBandwidthMeter(context))
 
         val cacheDataSourceFactory = CacheDataSource.Factory()
             .setCache(VideoCache.getCache(context))
@@ -326,12 +389,11 @@ class EatshotsVideoPlayer(
 
         val networkType = VideoCache.getNetworkType(context)
         val isHighSpeed = networkType == "WIFI" || networkType == "5G"
-        val isMediumSpeed = networkType == "4G"
         
-        val minBufferMs = if (isHighSpeed) 15000 else if (isMediumSpeed) 20000 else 25000
-        val maxBufferMs = if (isHighSpeed) 30000 else if (isMediumSpeed) 40000 else 50000
-        val bufferForPlaybackMs = if (isHighSpeed) 800 else if (isMediumSpeed) 2000 else 3000
-        val bufferForPlaybackAfterRebufferMs = if (isHighSpeed) 1500 else if (isMediumSpeed) 3000 else 4500
+        val minBufferMs = if (isHighSpeed) 3000 else 5000
+        val maxBufferMs = if (isHighSpeed) 8000 else 10000
+        val bufferForPlaybackMs = if (isHighSpeed) 250 else 500
+        val bufferForPlaybackAfterRebufferMs = 1000
 
         android.util.Log.d("EatshotsVideoPlayer", "EatshotsVideoPlayer init: URL=$url, NetworkType=$networkType, Buffers=[min:$minBufferMs, max:$maxBufferMs, play:$bufferForPlaybackMs, rebuffer:$bufferForPlaybackAfterRebufferMs]")
 
