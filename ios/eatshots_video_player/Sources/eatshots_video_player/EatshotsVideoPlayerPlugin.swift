@@ -3,6 +3,8 @@ import UIKit
 import AVFoundation
 import Network
 import CoreTelephony
+import MobileCoreServices
+import UniformTypeIdentifiers
 
 public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private let registry: FlutterTextureRegistry
@@ -272,15 +274,22 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
     
     let asset: AVURLAsset
     if resolvedUrl.scheme == "http" || resolvedUrl.scheme == "https" {
-      var components = URLComponents(url: resolvedUrl, resolvingAgainstBaseURL: false)
-      components?.scheme = "eatshotscache"
-      if let customUrl = components?.url {
-        asset = AVURLAsset(url: customUrl)
-        let delegate = EatshotsResourceLoaderDelegate()
-        asset.resourceLoader.setDelegate(delegate, queue: DispatchQueue.global(qos: .userInitiated))
-        self.resourceLoaderDelegate = delegate
+      if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: resolvedUrl),
+         let _ = EatshotsResourceLoaderDelegate.getCachedMeta(for: resolvedUrl) {
+        var components = URLComponents(url: resolvedUrl, resolvingAgainstBaseURL: false)
+        let origScheme = resolvedUrl.scheme ?? "https"
+        components?.scheme = origScheme == "https" ? "eatshotscaches" : "eatshotscache"
+        if let customUrl = components?.url {
+          asset = AVURLAsset(url: customUrl)
+          let delegate = EatshotsResourceLoaderDelegate()
+          asset.resourceLoader.setDelegate(delegate, queue: DispatchQueue.global(qos: .userInitiated))
+          self.resourceLoaderDelegate = delegate
+        } else {
+          asset = AVURLAsset(url: resolvedUrl)
+        }
       } else {
         asset = AVURLAsset(url: resolvedUrl)
+        EatshotsResourceLoaderDelegate.prefetch(url: resolvedUrl, bytes: 2 * 1024 * 1024)
       }
     } else {
       asset = AVURLAsset(url: resolvedUrl)
@@ -473,17 +482,24 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   }
 }
 
-class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, URLSessionDataDelegate {
+struct EatshotsVideoMetadata {
+    let contentType: String
+    let totalLength: Int64
+}
+
+class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
     private var taskMap = [AVAssetResourceLoadingRequest: URLSessionDataTask]()
     private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.default
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        return URLSession(configuration: .default)
     }()
     
     // Cache directory path
     private static var cacheDirectory: URL {
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("eatshots_video_cache")
     }
+    
+    private static var activePrefetchUrls = Set<URL>()
+    private static let lock = NSLock()
     
     override init() {
         super.init()
@@ -507,18 +523,124 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
         return nil
     }
     
-    static func prefetch(url: URL, bytes: Int) {
+    static func getCachedMeta(for url: URL) -> EatshotsVideoMetadata? {
         let safeName = getSafeFileName(for: url)
-        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
-        if FileManager.default.fileExists(atPath: fileUrl.path) {
+        let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
+        guard let content = try? String(contentsOf: metaUrl, encoding: .utf8) else {
+            return nil
+        }
+        
+        var contentType = "public.mpeg-4"
+        var totalLength: Int64 = 0
+        
+        let lines = content.components(separatedBy: "\n")
+        for line in lines {
+            let parts = line.split(separator: "=", maxSplits: 1)
+            if parts.count == 2 {
+                let key = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                let val = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                if key == "contentType" {
+                    contentType = val
+                } else if key == "totalLength" {
+                    totalLength = Int64(val) ?? 0
+                }
+            }
+        }
+        
+        if totalLength > 0 {
+            return EatshotsVideoMetadata(contentType: contentType, totalLength: totalLength)
+        }
+        return nil
+    }
+    
+    static func getUTI(fromMimeType mimeType: String) -> String {
+        if #available(iOS 14.0, *) {
+            if let utType = UTType(mimeType: mimeType) {
+                return utType.identifier
+            }
+        }
+        if let uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mimeType as CFString, nil)?.takeRetainedValue() {
+            return uti as String
+        }
+        
+        let lowerMime = mimeType.lowercased()
+        if lowerMime.contains("mp4") {
+            return "public.mpeg-4"
+        } else if lowerMime.contains("quicktime") || lowerMime.contains("mov") {
+            return "com.apple.quicktime-movie"
+        } else if lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") {
+            return "public.mpeg-url"
+        } else if lowerMime.contains("3gpp") {
+            return "public.3gpp"
+        }
+        
+        return "public.mpeg-4"
+    }
+    
+    static func prefetch(url: URL, bytes: Int) {
+        lock.lock()
+        if activePrefetchUrls.contains(url) {
+            lock.unlock()
             return
         }
         
+        let safeName = getSafeFileName(for: url)
+        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
+        let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
+        if FileManager.default.fileExists(atPath: fileUrl.path) && FileManager.default.fileExists(atPath: metaUrl.path) {
+            lock.unlock()
+            return
+        }
+        
+        activePrefetchUrls.insert(url)
+        lock.unlock()
+        
         var request = URLRequest(url: url)
         request.setValue("bytes=0-\(bytes)", forHTTPHeaderField: "Range")
-        let task = URLSession.shared.downloadTask(with: request) { tempUrl, response, error in
-            guard let tempUrl = tempUrl, error == nil else { return }
-            try? FileManager.default.moveItem(at: tempUrl, to: fileUrl)
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            defer {
+                lock.lock()
+                activePrefetchUrls.remove(url)
+                lock.unlock()
+            }
+            
+            guard let data = data, let httpResponse = response as? HTTPURLResponse, error == nil else { return }
+            
+            let tempFileUrl = cacheDirectory.appendingPathComponent(safeName + ".tmp")
+            let tempMetaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta.tmp")
+            
+            do {
+                try data.write(to: tempFileUrl)
+                
+                var totalLength: Int64 = -1
+                if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
+                    if let lastPart = contentRange.split(separator: "/").last, let total = Int64(lastPart) {
+                        totalLength = total
+                    }
+                }
+                if totalLength == -1 {
+                    totalLength = httpResponse.expectedContentLength
+                }
+                
+                let mimeType = httpResponse.mimeType ?? "video/mp4"
+                let uti = getUTI(fromMimeType: mimeType)
+                
+                let metaString = "contentType=\(uti)\ntotalLength=\(totalLength)"
+                try metaString.write(to: tempMetaUrl, atomically: true, encoding: .utf8)
+                
+                if FileManager.default.fileExists(atPath: fileUrl.path) {
+                    try? FileManager.default.removeItem(at: fileUrl)
+                }
+                try FileManager.default.moveItem(at: tempFileUrl, to: fileUrl)
+                
+                if FileManager.default.fileExists(atPath: metaUrl.path) {
+                    try? FileManager.default.removeItem(at: metaUrl)
+                }
+                try FileManager.default.moveItem(at: tempMetaUrl, to: metaUrl)
+            } catch {
+                try? FileManager.default.removeItem(at: tempFileUrl)
+                try? FileManager.default.removeItem(at: tempMetaUrl)
+            }
         }
         task.resume()
     }
@@ -526,12 +648,14 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
         guard let originalUrl = loadingRequest.request.url else { return false }
         
+        let originalScheme = originalUrl.scheme == "eatshotscaches" ? "https" : "http"
         var components = URLComponents(url: originalUrl, resolvingAgainstBaseURL: false)
-        components?.scheme = "https"
+        components?.scheme = originalScheme
         guard let httpUrl = components?.url else { return false }
         
-        if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: httpUrl) {
-            serveLocalFile(localUrl, loadingRequest: loadingRequest)
+        if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: httpUrl),
+           let meta = EatshotsResourceLoaderDelegate.getCachedMeta(for: httpUrl) {
+            serveLocalFile(localUrl, meta: meta, httpUrl: httpUrl, loadingRequest: loadingRequest)
             return true
         }
         
@@ -545,29 +669,63 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
         }
     }
     
-    private func serveLocalFile(_ localUrl: URL, loadingRequest: AVAssetResourceLoadingRequest) {
-        guard let data = try? Data(contentsOf: localUrl) else {
+    private func serveLocalFile(_ localUrl: URL, meta: EatshotsVideoMetadata, httpUrl: URL, loadingRequest: AVAssetResourceLoadingRequest) {
+        guard let localData = try? Data(contentsOf: localUrl, options: .mappedIfSafe) else {
             loadingRequest.finishLoading(with: NSError(domain: "eatshotscache", code: -1, userInfo: nil))
             return
         }
         
         if let contentRequest = loadingRequest.contentInformationRequest {
-            contentRequest.contentType = "video/mp4"
-            contentRequest.contentLength = Int64(data.count)
+            contentRequest.contentType = meta.contentType
+            contentRequest.contentLength = meta.totalLength
             contentRequest.isByteRangeAccessSupported = true
         }
         
-        if let dataRequest = loadingRequest.dataRequest {
-            let offset = Int(dataRequest.requestedOffset)
-            let length = Int(dataRequest.requestedLength)
-            if offset + length <= data.count {
-                let chunk = data.subdata(in: offset..<(offset + length))
-                dataRequest.respond(with: chunk)
+        guard let dataRequest = loadingRequest.dataRequest else {
+            loadingRequest.finishLoading()
+            return
+        }
+        
+        let requestedOffset = dataRequest.requestedOffset
+        let requestedLength = Int64(dataRequest.requestedLength)
+        let cachedLength = Int64(localData.count)
+        
+        if requestedOffset < cachedLength {
+            let cachedPartLength = min(cachedLength - requestedOffset, requestedLength)
+            let subData = localData.subdata(in: Int(requestedOffset)..<Int(requestedOffset + cachedPartLength))
+            dataRequest.respond(with: subData)
+            
+            if cachedPartLength == requestedLength {
+                loadingRequest.finishLoading()
+                return
+            }
+        }
+        
+        let startOffset = max(requestedOffset, cachedLength)
+        let endOffset = requestedOffset + requestedLength - 1
+        
+        var request = URLRequest(url: httpUrl)
+        request.setValue("bytes=\(startOffset)-\(endOffset)", forHTTPHeaderField: "Range")
+        
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            defer {
+                self?.taskMap.removeValue(forKey: loadingRequest)
+            }
+            
+            if let error = error {
+                loadingRequest.finishLoading(with: error)
+                return
+            }
+            
+            if let data = data {
+                dataRequest.respond(with: data)
                 loadingRequest.finishLoading()
             } else {
                 loadingRequest.finishLoading()
             }
         }
+        taskMap[loadingRequest] = task
+        task.resume()
     }
     
     private func startStreamingRequest(_ httpUrl: URL, loadingRequest: AVAssetResourceLoadingRequest) {
@@ -578,8 +736,8 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
             request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
         }
         
-        let task = session.dataTask(with: request) { data, response, error in
-            defer { self.taskMap.removeValue(forKey: loadingRequest) }
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            defer { self?.taskMap.removeValue(forKey: loadingRequest) }
             
             if let error = error {
                 loadingRequest.finishLoading(with: error)
@@ -588,8 +746,10 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
             
             if let httpResponse = response as? HTTPURLResponse {
                 if let contentRequest = loadingRequest.contentInformationRequest {
-                    contentRequest.contentType = httpResponse.allHeaderFields["Content-Type"] as? String ?? "video/mp4"
-                    let contentRange = httpResponse.allHeaderFields["Content-Range"] as? String
+                    let mimeType = httpResponse.mimeType ?? "video/mp4"
+                    contentRequest.contentType = EatshotsResourceLoaderDelegate.getUTI(fromMimeType: mimeType)
+                    
+                    let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
                     if let totalLengthStr = contentRange?.split(separator: "/").last, let totalLength = Int64(totalLengthStr) {
                         contentRequest.contentLength = totalLength
                     } else {
@@ -602,12 +762,6 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
             if let data = data, let dataRequest = loadingRequest.dataRequest {
                 dataRequest.respond(with: data)
                 loadingRequest.finishLoading()
-                
-                if dataRequest.requestedOffset == 0 {
-                    let safeName = EatshotsResourceLoaderDelegate.getSafeFileName(for: httpUrl)
-                    let fileUrl = EatshotsResourceLoaderDelegate.cacheDirectory.appendingPathComponent(safeName)
-                    try? data.write(to: fileUrl)
-                }
             }
         }
         taskMap[loadingRequest] = task

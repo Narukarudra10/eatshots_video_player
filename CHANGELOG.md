@@ -1,3 +1,10 @@
+## 0.1.6
+
+* iOS Caching & Video Playback Fixes:
+  * Resolved video playback issue on iOS devices caused by a UTI vs. MIME type mismatch in `AVAssetResourceLoadingContentInformationRequest.contentType`.
+  * Refactored `EatshotsResourceLoaderDelegate` to use atomic cache writing with `.tmp` and `.meta` files, preventing corrupted cache files on initial probes.
+  * Added a hybrid playback strategy where uncached videos stream natively over standard `http`/`https` URLs, while cached/prefetched videos use a custom scheme (`eatshotscache`/`eatshotscaches`) and support seamless range requests.
+
 ## 0.1.5
 
 * iOS Xcode Build Fix:
