@@ -1,3 +1,12 @@
+## 0.1.7
+
+* iOS Performance & Caching Engine Overhaul:
+  * Implemented `EatshotsMediaDownloader`, a thread-safe, sequential background cache downloader shared between prefetching and playing.
+  * Added dynamic range request streaming to bypass caching during seeks or non-sequential container layouts, preventing player freezes.
+  * Added direct local playback via `file://` URLs for fully cached videos, bypassing the resource loader delegate for optimal native performance.
+  * Implemented proper thread-safe background prefetch cancellation (`cancelPrefetch`) on iOS, preventing network congestion when scrolling rapidly.
+  * Ensured the local caches directory is automatically created during prefetching to prevent initial write failures.
+
 ## 0.1.6
 
 * iOS Caching & Video Playback Fixes:

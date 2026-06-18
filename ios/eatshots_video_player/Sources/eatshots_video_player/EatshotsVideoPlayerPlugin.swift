@@ -211,6 +211,12 @@ public class EatshotsVideoPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHa
       result(nil)
       
     case "cancelPrefetch":
+      guard let urlString = args?["url"] as? String,
+            let url = URL(string: urlString) else {
+        result(FlutterError(code: "INVALID_ARGUMENT", message: "URL is invalid", details: nil))
+        return
+      }
+      EatshotsResourceLoaderDelegate.cancelPrefetch(url: url)
       result(nil)
       
     case "getNetworkType":
@@ -274,8 +280,10 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
     
     let asset: AVURLAsset
     if resolvedUrl.scheme == "http" || resolvedUrl.scheme == "https" {
-      if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: resolvedUrl),
-         let _ = EatshotsResourceLoaderDelegate.getCachedMeta(for: resolvedUrl) {
+      if EatshotsResourceLoaderDelegate.isFullyCached(url: resolvedUrl),
+         let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: resolvedUrl) {
+        asset = AVURLAsset(url: localUrl)
+      } else {
         var components = URLComponents(url: resolvedUrl, resolvingAgainstBaseURL: false)
         let origScheme = resolvedUrl.scheme ?? "https"
         components?.scheme = origScheme == "https" ? "eatshotscaches" : "eatshotscache"
@@ -284,12 +292,12 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
           let delegate = EatshotsResourceLoaderDelegate()
           asset.resourceLoader.setDelegate(delegate, queue: DispatchQueue.global(qos: .userInitiated))
           self.resourceLoaderDelegate = delegate
+          
+          let downloader = EatshotsResourceLoaderDelegate.getOrCreateDownloader(for: resolvedUrl)
+          downloader.start(isPrefetch: false, limit: 0)
         } else {
           asset = AVURLAsset(url: resolvedUrl)
         }
-      } else {
-        asset = AVURLAsset(url: resolvedUrl)
-        EatshotsResourceLoaderDelegate.prefetch(url: resolvedUrl, bytes: 2 * 1024 * 1024)
       }
     } else {
       asset = AVURLAsset(url: resolvedUrl)
@@ -310,7 +318,7 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
       player.replaceCurrentItem(with: item)
     } else {
       self.player = AVPlayer(playerItem: item)
-      self.player?.actionAtItemEnd = .none // loop hander will seek to start
+      self.player?.actionAtItemEnd = .none // loop handler will seek to start
     }
     
     // Add observers
@@ -487,23 +495,337 @@ struct EatshotsVideoMetadata {
     let totalLength: Int64
 }
 
+class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
+    let url: URL
+    let fileUrl: URL
+    let tempFileUrl: URL
+    let metaUrl: URL
+    
+    private var session: URLSession?
+    private var task: URLSessionDataTask?
+    
+    private var fileHandle: FileHandle?
+    var receivedLength: Int64 = 0
+    var totalLength: Int64 = -1
+    var mimeType: String = "video/mp4"
+    var isPrefetchOnly = false
+    var prefetchLimit: Int64 = 0
+    
+    private var pendingRequests = Set<AVAssetResourceLoadingRequest>()
+    private let queue = DispatchQueue(label: "com.eatshots.downloader")
+    
+    var onCompleted: (() -> Void)?
+    var onError: ((Error?) -> Void)?
+    
+    init(url: URL, fileUrl: URL, tempFileUrl: URL, metaUrl: URL) {
+        self.url = url
+        self.fileUrl = fileUrl
+        self.tempFileUrl = tempFileUrl
+        self.metaUrl = metaUrl
+        super.init()
+        
+        try? FileManager.default.createDirectory(at: EatshotsResourceLoaderDelegate.cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+        
+        if FileManager.default.fileExists(atPath: tempFileUrl.path) {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: tempFileUrl.path),
+               let size = attrs[.size] as? Int64 {
+                self.receivedLength = size
+            }
+        } else {
+            FileManager.default.createFile(atPath: tempFileUrl.path, contents: nil, attributes: nil)
+        }
+    }
+    
+    func start(isPrefetch: Bool, limit: Int64) {
+        queue.async {
+            if self.task == nil {
+                self.isPrefetchOnly = isPrefetch
+                self.prefetchLimit = limit
+                self.startInternalTask()
+            } else {
+                if !isPrefetch && self.isPrefetchOnly {
+                    self.isPrefetchOnly = false
+                    self.prefetchLimit = 0
+                    if self.receivedLength >= limit && self.totalLength > 0 && self.receivedLength < self.totalLength {
+                        self.startInternalTask()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func startInternalTask() {
+        if self.fileHandle == nil {
+            self.fileHandle = FileHandle(forWritingAtPath: tempFileUrl.path)
+        }
+        
+        let config = URLSessionConfiguration.default
+        let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        self.session = session
+        
+        var request = URLRequest(url: url)
+        if receivedLength > 0 {
+            request.setValue("bytes=\(receivedLength)-", forHTTPHeaderField: "Range")
+        }
+        
+        let task = session.dataTask(with: request)
+        self.task = task
+        task.resume()
+    }
+    
+    func cancel() {
+        queue.async {
+            self.task?.cancel()
+            self.task = nil
+            self.session?.invalidateAndCancel()
+            self.session = nil
+            if #available(iOS 13.0, *) {
+                try? self.fileHandle?.close()
+            } else {
+                self.fileHandle?.closeFile()
+            }
+            self.fileHandle = nil
+        }
+    }
+    
+    func add(request: AVAssetResourceLoadingRequest) {
+        queue.async {
+            self.pendingRequests.insert(request)
+            self.processPendingRequests()
+        }
+    }
+    
+    func remove(request: AVAssetResourceLoadingRequest) {
+        queue.async {
+            self.pendingRequests.remove(request)
+        }
+    }
+    
+    private func processPendingRequests() {
+        var completedRequests = Set<AVAssetResourceLoadingRequest>()
+        
+        for request in pendingRequests {
+            var filledContent = false
+            if let contentRequest = request.contentInformationRequest {
+                if totalLength > 0 {
+                    contentRequest.contentType = EatshotsResourceLoaderDelegate.getUTI(fromMimeType: self.mimeType)
+                    contentRequest.contentLength = totalLength
+                    contentRequest.isByteRangeAccessSupported = true
+                    filledContent = true
+                }
+            } else {
+                filledContent = true
+            }
+            
+            if let dataRequest = request.dataRequest {
+                let requestedOffset = dataRequest.requestedOffset
+                let requestedLength = Int64(dataRequest.requestedLength)
+                
+                if requestedOffset < receivedLength {
+                    let availableLength = min(receivedLength - requestedOffset, requestedLength)
+                    if availableLength > 0 {
+                        if let data = readData(from: tempFileUrl, offset: requestedOffset, length: availableLength) {
+                            dataRequest.respond(with: data)
+                        }
+                    }
+                    
+                    if requestedOffset + requestedLength <= receivedLength && filledContent {
+                        request.finishLoading()
+                        completedRequests.insert(request)
+                    }
+                }
+            } else if filledContent {
+                request.finishLoading()
+                completedRequests.insert(request)
+            }
+        }
+        
+        for req in completedRequests {
+            pendingRequests.remove(req)
+        }
+    }
+    
+    private func readData(from url: URL, offset: Int64, length: Int64) -> Data? {
+        guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer {
+            if #available(iOS 13.0, *) {
+                try? file.close()
+            } else {
+                file.closeFile()
+            }
+        }
+        do {
+            if #available(iOS 13.0, *) {
+                try file.seek(toOffset: UInt64(offset))
+            } else {
+                file.seek(toFileOffset: UInt64(offset))
+            }
+            return file.readData(ofLength: Int(length))
+        } catch {
+            return nil
+        }
+    }
+    
+    // MARK: - URLSessionDataDelegate
+    
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        queue.async {
+            if let httpResponse = response as? HTTPURLResponse {
+                let statusCode = httpResponse.statusCode
+                if statusCode >= 200 && statusCode < 300 {
+                    let isRangeAccepted = statusCode == 206
+                    
+                    if !isRangeAccepted && self.receivedLength > 0 {
+                        self.receivedLength = 0
+                        if #available(iOS 13.0, *) {
+                            try? self.fileHandle?.truncate(atOffset: 0)
+                        } else {
+                            self.fileHandle?.truncateFile(atOffset: 0)
+                        }
+                    }
+                    
+                    if self.totalLength == -1 {
+                        var total: Int64 = -1
+                        if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
+                            if let lastPart = contentRange.split(separator: "/").last, let t = Int64(lastPart) {
+                                total = t
+                            }
+                        }
+                        if total == -1 {
+                            total = httpResponse.expectedContentLength
+                        }
+                        self.totalLength = total
+                        self.mimeType = httpResponse.mimeType ?? "video/mp4"
+                    }
+                    
+                    completionHandler(.allow)
+                    self.processPendingRequests()
+                    return
+                }
+            }
+            completionHandler(.cancel)
+        }
+    }
+    
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        queue.async {
+            guard let fileHandle = self.fileHandle else { return }
+            
+            do {
+                if #available(iOS 13.4, *) {
+                    try fileHandle.seekToEnd()
+                    try fileHandle.write(contentsOf: data)
+                } else {
+                    fileHandle.seekToEndOfFile()
+                    fileHandle.write(data)
+                }
+                self.receivedLength += Int64(data.count)
+            } catch {
+                return
+            }
+            
+            self.processPendingRequests()
+            
+            if self.isPrefetchOnly && self.receivedLength >= self.prefetchLimit {
+                self.task?.cancel()
+                self.task = nil
+                self.session?.invalidateAndCancel()
+                self.session = nil
+                if #available(iOS 13.0, *) {
+                    try? fileHandle.close()
+                } else {
+                    fileHandle.closeFile()
+                }
+                self.fileHandle = nil
+                self.onCompleted?()
+            }
+        }
+    }
+    
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        queue.async {
+            if #available(iOS 13.0, *) {
+                try? self.fileHandle?.close()
+            } else {
+                self.fileHandle?.closeFile()
+            }
+            self.fileHandle = nil
+            
+            if let error = error {
+                let nsError = error as NSError
+                if nsError.code != NSURLErrorCancelled {
+                    self.onError?(error)
+                }
+                return
+            }
+            
+            if self.receivedLength == self.totalLength {
+                do {
+                    let fileManager = FileManager.default
+                    if fileManager.fileExists(atPath: self.fileUrl.path) {
+                        try? fileManager.removeItem(at: self.fileUrl)
+                    }
+                    try fileManager.moveItem(at: self.tempFileUrl, to: self.fileUrl)
+                    
+                    let uti = EatshotsResourceLoaderDelegate.getUTI(fromMimeType: self.mimeType)
+                    let metaString = "contentType=\(uti)\ntotalLength=\(self.totalLength)"
+                    if fileManager.fileExists(atPath: self.metaUrl.path) {
+                        try? fileManager.removeItem(at: self.metaUrl)
+                    }
+                    try metaString.write(to: self.metaUrl, atomically: true, encoding: .utf8)
+                    
+                    self.onCompleted?()
+                } catch {
+                    self.onError?(error)
+                }
+            }
+        }
+    }
+}
+
 class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
     private var taskMap = [AVAssetResourceLoadingRequest: URLSessionDataTask]()
     private lazy var session: URLSession = {
         return URLSession(configuration: .default)
     }()
     
-    // Cache directory path
-    private static var cacheDirectory: URL {
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("eatshots_video_cache")
+    static var activeDownloaders = [URL: EatshotsMediaDownloader]()
+    private static let downloaderLock = NSLock()
+    
+    static func getOrCreateDownloader(for url: URL) -> EatshotsMediaDownloader {
+        downloaderLock.lock()
+        defer { downloaderLock.unlock() }
+        
+        if let existing = activeDownloaders[url] {
+            return existing
+        }
+        
+        let safeName = getSafeFileName(for: url)
+        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
+        let tempFileUrl = cacheDirectory.appendingPathComponent(safeName + ".tmp")
+        let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
+        
+        let downloader = EatshotsMediaDownloader(url: url, fileUrl: fileUrl, tempFileUrl: tempFileUrl, metaUrl: metaUrl)
+        
+        downloader.onCompleted = {
+            downloaderLock.lock()
+            activeDownloaders.removeValue(forKey: url)
+            downloaderLock.unlock()
+        }
+        
+        downloader.onError = { _ in
+            downloaderLock.lock()
+            activeDownloaders.removeValue(forKey: url)
+            downloaderLock.unlock()
+        }
+        
+        activeDownloaders[url] = downloader
+        return downloader
     }
     
-    private static var activePrefetchUrls = Set<URL>()
-    private static let lock = NSLock()
-    
-    override init() {
-        super.init()
-        try? FileManager.default.createDirectory(at: EatshotsResourceLoaderDelegate.cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+    // Cache directory path
+    static var cacheDirectory: URL {
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("eatshots_video_cache")
     }
     
     static func getSafeFileName(for url: URL) -> String {
@@ -553,6 +875,29 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         return nil
     }
     
+    static func isFullyCached(url: URL) -> Bool {
+        let safeName = getSafeFileName(for: url)
+        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
+        let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
+        
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: fileUrl.path),
+              fileManager.fileExists(atPath: metaUrl.path),
+              let meta = getCachedMeta(for: url) else {
+            return false
+        }
+        
+        do {
+            let attrs = try fileManager.attributesOfItem(atPath: fileUrl.path)
+            if let fileSize = attrs[.size] as? Int64 {
+                return fileSize == meta.totalLength
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+    
     static func getUTI(fromMimeType mimeType: String) -> String {
         if #available(iOS 14.0, *) {
             if let utType = UTType(mimeType: mimeType) {
@@ -578,71 +923,27 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
     }
     
     static func prefetch(url: URL, bytes: Int) {
-        lock.lock()
-        if activePrefetchUrls.contains(url) {
-            lock.unlock()
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+        
+        if isFullyCached(url: url) {
             return
         }
         
-        let safeName = getSafeFileName(for: url)
-        let fileUrl = cacheDirectory.appendingPathComponent(safeName)
-        let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
-        if FileManager.default.fileExists(atPath: fileUrl.path) && FileManager.default.fileExists(atPath: metaUrl.path) {
-            lock.unlock()
-            return
-        }
+        let downloader = getOrCreateDownloader(for: url)
+        downloader.start(isPrefetch: true, limit: Int64(bytes))
+    }
+    
+    static func cancelPrefetch(url: URL) {
+        downloaderLock.lock()
+        let downloader = activeDownloaders[url]
+        downloaderLock.unlock()
         
-        activePrefetchUrls.insert(url)
-        lock.unlock()
-        
-        var request = URLRequest(url: url)
-        request.setValue("bytes=0-\(bytes)", forHTTPHeaderField: "Range")
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            defer {
-                lock.lock()
-                activePrefetchUrls.remove(url)
-                lock.unlock()
-            }
-            
-            guard let data = data, let httpResponse = response as? HTTPURLResponse, error == nil else { return }
-            
-            let tempFileUrl = cacheDirectory.appendingPathComponent(safeName + ".tmp")
-            let tempMetaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta.tmp")
-            
-            do {
-                try data.write(to: tempFileUrl)
-                
-                var totalLength: Int64 = -1
-                if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
-                    if let lastPart = contentRange.split(separator: "/").last, let total = Int64(lastPart) {
-                        totalLength = total
-                    }
-                }
-                if totalLength == -1 {
-                    totalLength = httpResponse.expectedContentLength
-                }
-                
-                let mimeType = httpResponse.mimeType ?? "video/mp4"
-                let uti = getUTI(fromMimeType: mimeType)
-                
-                let metaString = "contentType=\(uti)\ntotalLength=\(totalLength)"
-                try metaString.write(to: tempMetaUrl, atomically: true, encoding: .utf8)
-                
-                if FileManager.default.fileExists(atPath: fileUrl.path) {
-                    try? FileManager.default.removeItem(at: fileUrl)
-                }
-                try FileManager.default.moveItem(at: tempFileUrl, to: fileUrl)
-                
-                if FileManager.default.fileExists(atPath: metaUrl.path) {
-                    try? FileManager.default.removeItem(at: metaUrl)
-                }
-                try FileManager.default.moveItem(at: tempMetaUrl, to: metaUrl)
-            } catch {
-                try? FileManager.default.removeItem(at: tempFileUrl)
-                try? FileManager.default.removeItem(at: tempMetaUrl)
-            }
+        if let downloader = downloader, downloader.isPrefetchOnly {
+            downloader.cancel()
+            downloaderLock.lock()
+            activeDownloaders.removeValue(forKey: url)
+            downloaderLock.unlock()
         }
-        task.resume()
     }
     
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
@@ -653,19 +954,41 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         components?.scheme = originalScheme
         guard let httpUrl = components?.url else { return false }
         
-        if let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: httpUrl),
+        if EatshotsResourceLoaderDelegate.isFullyCached(url: httpUrl),
+           let localUrl = EatshotsResourceLoaderDelegate.getCachedFileUrl(for: httpUrl),
            let meta = EatshotsResourceLoaderDelegate.getCachedMeta(for: httpUrl) {
             serveLocalFile(localUrl, meta: meta, httpUrl: httpUrl, loadingRequest: loadingRequest)
             return true
         }
         
-        startStreamingRequest(httpUrl, loadingRequest: loadingRequest)
+        if let dataRequest = loadingRequest.dataRequest {
+            let requestedOffset = dataRequest.requestedOffset
+            
+            let downloader = EatshotsResourceLoaderDelegate.getOrCreateDownloader(for: httpUrl)
+            if requestedOffset > downloader.receivedLength + 512 * 1024 {
+                startStreamingRequest(httpUrl, loadingRequest: loadingRequest)
+                return true
+            }
+        }
+        
+        let downloader = EatshotsResourceLoaderDelegate.getOrCreateDownloader(for: httpUrl)
+        downloader.add(request: loadingRequest)
         return true
     }
     
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader, didCancel loadingRequest: AVAssetResourceLoadingRequest) {
         if let task = taskMap.removeValue(forKey: loadingRequest) {
             task.cancel()
+        }
+        
+        guard let originalUrl = loadingRequest.request.url else { return }
+        let originalScheme = originalUrl.scheme == "eatshotscaches" ? "https" : "http"
+        var components = URLComponents(url: originalUrl, resolvingAgainstBaseURL: false)
+        components?.scheme = originalScheme
+        if let httpUrl = components?.url {
+            if let downloader = EatshotsResourceLoaderDelegate.activeDownloaders[httpUrl] {
+                downloader.remove(request: loadingRequest)
+            }
         }
     }
     

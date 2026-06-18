@@ -8,6 +8,16 @@ A premium, high-performance, Reels/TikTok-style short-form video player plugin f
 
 ---
 
+## ❤️ Support the Project
+
+If you love using this package and find it helpful, please support it!
+* **Like it** on [pub.dev](https://pub.dev/packages/eatshots_video_player)
+* **Star** the repository on [GitHub](https://github.com/Narukarudra10/eatshots_video_player)
+
+Your support helps keep this project active and updated!
+
+---
+
 ## ⚡ Why eatshots_video_player?
 
 Standard Flutter video players (like the official `video_player` package) are designed for single-video or long-form playback. When used in rapid vertical scrolling feeds, they suffer from:
@@ -50,7 +60,7 @@ Add `eatshots_video_player` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  eatshots_video_player: ^0.1.6
+  eatshots_video_player: ^0.1.7
 ```
 
 ### 2. Import
@@ -251,5 +261,5 @@ Manages native video player recycling, caching, and network-aware prefetching.
 * **iOS:** High-fidelity playback via AVFoundation.
 * **macOS:** Premium desktop playback via AVFoundation.
 
----
+
 
