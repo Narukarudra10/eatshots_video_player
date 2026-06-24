@@ -1,3 +1,14 @@
+## 0.1.8
+
+* Zero-Delay Seeking, Platform Compatibility & HLS (m3u8) Support:
+  * Added native HLS (`.m3u8`) playback support on iOS by detecting HLS feeds and bypassing the progressive downloader to stream them natively via AVPlayer.
+  * Added HLS prefetch manifest warming on iOS using background data tasks to cache `.m3u8` playlist indices and accelerate startup latency.
+  * Implemented `EatshotsSingleRequestStreamer` on iOS to stream byte-range requests incrementally during seeks, ensuring instantaneous seek playback.
+  * Refactored `serveLocalFile` on iOS to strictly serve fully cached assets synchronously and instantly, removing unreachable network code.
+  * Resolved potential dynamic linker (`dyld`) load crashes on iOS 12/13 by removing the direct `UniformTypeIdentifiers` framework import and using `MobileCoreServices` API fallbacks.
+  * Added compatibility checks for Android 5.0/5.1 (API 21/22) in `VideoCache.getNetworkType()` to fall back safely to `ConnectivityManager.activeNetworkInfo` and avoid `NoSuchMethodError` crashes.
+  * Updated iOS deployment target to 12.0 in Swift Package Manager and CocoaPods configurations.
+
 ## 0.1.7
 
 * iOS Performance & Caching Engine Overhaul:

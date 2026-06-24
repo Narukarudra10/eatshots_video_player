@@ -130,42 +130,65 @@ object VideoCache {
     fun getNetworkType(context: Context): String {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "NONE"
-            val activeNetwork = cm.activeNetwork ?: return "NONE"
-            val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return "NONE"
             
-            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || 
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
-                return "WIFI"
-            }
-            
-            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-                var preciseType = TelephonyManager.NETWORK_TYPE_UNKNOWN
-                try {
-                    preciseType = tm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
-                } catch (se: SecurityException) {
-                    // READ_PHONE_STATE permission is missing
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val activeNetwork = cm.activeNetwork ?: return "NONE"
+                val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return "NONE"
+                
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || 
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                    return "WIFI"
                 }
                 
-                if (preciseType == TelephonyManager.NETWORK_TYPE_UNKNOWN) {
-                    val bandwidth = capabilities.linkDownstreamBandwidthKbps
-                    return if (bandwidth >= 25000) { // 25 Mbps
-                        "5G"
-                    } else if (bandwidth >= 3000) { // 3 Mbps
-                        "4G"
-                    } else {
-                        "3G"
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                    val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                    var preciseType = TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    try {
+                        preciseType = tm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    } catch (se: SecurityException) {
+                        // READ_PHONE_STATE permission is missing
+                    }
+                    
+                    if (preciseType == TelephonyManager.NETWORK_TYPE_UNKNOWN) {
+                        val bandwidth = capabilities.linkDownstreamBandwidthKbps
+                        return if (bandwidth >= 25000) { // 25 Mbps
+                            "5G"
+                        } else if (bandwidth >= 3000) { // 3 Mbps
+                            "4G"
+                        } else {
+                            "3G"
+                        }
+                    }
+                    
+                    return when (preciseType) {
+                        TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                        TelephonyManager.NETWORK_TYPE_LTE,
+                        TelephonyManager.NETWORK_TYPE_HSPAP,
+                        TelephonyManager.NETWORK_TYPE_EHRPD -> "4G"
+                        else -> {
+                            val bandwidth = capabilities.linkDownstreamBandwidthKbps
+                            if (bandwidth >= 3000) "4G" else "3G"
+                        }
                     }
                 }
+            } else {
+                @Suppress("DEPRECATION")
+                val activeNetworkInfo = cm.activeNetworkInfo
+                if (activeNetworkInfo == null || !activeNetworkInfo.isConnected) return "NONE"
                 
-                return when (preciseType) {
-                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
-                    TelephonyManager.NETWORK_TYPE_LTE,
-                    TelephonyManager.NETWORK_TYPE_HSPAP,
-                    TelephonyManager.NETWORK_TYPE_EHRPD -> "4G"
-                    else -> {
-                        val bandwidth = capabilities.linkDownstreamBandwidthKbps
-                        if (bandwidth >= 3000) "4G" else "3G"
+                @Suppress("DEPRECATION")
+                val type = activeNetworkInfo.type
+                if (type == ConnectivityManager.TYPE_WIFI || type == ConnectivityManager.TYPE_ETHERNET) {
+                    return "WIFI"
+                }
+                if (type == ConnectivityManager.TYPE_MOBILE) {
+                    @Suppress("DEPRECATION")
+                    val subType = activeNetworkInfo.subtype
+                    return when (subType) {
+                        TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                        TelephonyManager.NETWORK_TYPE_HSPAP,
+                        TelephonyManager.NETWORK_TYPE_EHRPD -> "4G"
+                        else -> "3G"
                     }
                 }
             }

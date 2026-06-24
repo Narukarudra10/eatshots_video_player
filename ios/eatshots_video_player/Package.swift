@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "eatshots_video_player",
     platforms: [
-        .iOS("13.0")
+        .iOS("12.0")
     ],
     products: [
         .library(name: "eatshots-video-player", targets: ["eatshots_video_player"])
