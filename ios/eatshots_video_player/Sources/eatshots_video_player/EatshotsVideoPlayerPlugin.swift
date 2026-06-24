@@ -636,7 +636,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
             for request in self.pendingRequests {
                 request.finishLoading(with: error)
             }
-            self.pendingRequests.clear()
+            self.pendingRequests.removeAll()
         }
     }
     
@@ -740,7 +740,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
                     
                     if self.totalLength == -1 {
                         var total: Int64 = -1
-                        if let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range") {
+                        if let contentRange = httpResponse.valueCompat(forHTTPHeaderField: "Content-Range") {
                             if let lastPart = contentRange.split(separator: "/").last, let t = Int64(lastPart) {
                                 total = t
                             }
@@ -812,7 +812,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
                     for request in self.pendingRequests {
                         request.finishLoading(with: error)
                     }
-                    self.pendingRequests.clear()
+                    self.pendingRequests.removeAll()
                 }
                 return
             }
@@ -836,7 +836,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
                     for request in self.pendingRequests {
                         request.finishLoading()
                     }
-                    self.pendingRequests.clear()
+                    self.pendingRequests.removeAll()
                     
                     self.onCompleted?()
                 } catch {
@@ -844,7 +844,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
                     for request in self.pendingRequests {
                         request.finishLoading(with: error)
                     }
-                    self.pendingRequests.clear()
+                    self.pendingRequests.removeAll()
                 }
             } else {
                 let connError = NSError(domain: "eatshotscache", code: -2, userInfo: [NSLocalizedDescriptionKey: "Connection closed before receiving all data"])
@@ -852,7 +852,7 @@ class EatshotsMediaDownloader: NSObject, URLSessionDataDelegate {
                 for request in self.pendingRequests {
                     request.finishLoading(with: connError)
                 }
-                self.pendingRequests.clear()
+                self.pendingRequests.removeAll()
             }
         }
     }
@@ -902,7 +902,7 @@ class EatshotsSingleRequestStreamer: NSObject, URLSessionDataDelegate {
                         let mimeType = httpResponse.mimeType ?? "video/mp4"
                         contentRequest.contentType = EatshotsResourceLoaderDelegate.getUTI(fromMimeType: mimeType)
                         
-                        let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
+                        let contentRange = httpResponse.valueCompat(forHTTPHeaderField: "Content-Range")
                         if let totalLengthStr = contentRange?.split(separator: "/").last, let totalLength = Int64(totalLengthStr) {
                             contentRequest.contentLength = totalLength
                         } else {
@@ -1206,6 +1206,21 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         let streamer = EatshotsSingleRequestStreamer(url: httpUrl, loadingRequest: loadingRequest)
         taskQueue.async {
             self.taskMap[loadingRequest] = streamer
+        }
+    }
+}
+
+extension HTTPURLResponse {
+    func valueCompat(forHTTPHeaderField field: String) -> String? {
+        if #available(iOS 13.0, *) {
+            return self.value(forHTTPHeaderField: field)
+        } else {
+            for (key, value) in self.allHeaderFields {
+                if let keyStr = key as? String, keyStr.caseInsensitiveCompare(field) == .orderedSame {
+                    return value as? String
+                }
+            }
+            return nil
         }
     }
 }

@@ -1,3 +1,14 @@
+## 0.1.10
+
+* iOS Xcode build fixes:
+  * Resolved additional Swift compiler errors regarding `Set` having no member `clear` by changing remaining occurrences of `.clear()` to `.removeAll()` in `EatshotsVideoPlayerPlugin.swift`.
+
+## 0.1.9
+
+* iOS Xcode build fixes for older platform targets:
+  * Resolved Swift compilation error (`Value of type 'Set<AVAssetResourceLoadingRequest>' has no member 'clear'`) in `EatshotsVideoPlayerPlugin.swift` by using the correct `.removeAll()` method.
+  * Resolved Swift compilation error (`'value(forHTTPHeaderField:)' is only available in iOS 13.0 or newer`) in `EatshotsVideoPlayerPlugin.swift` by introducing a `valueCompat(forHTTPHeaderField:)` fallback extension on `HTTPURLResponse` for iOS versions prior to 13.0.
+
 ## 0.1.8
 
 * Zero-Delay Seeking, Platform Compatibility & HLS (m3u8) Support:
