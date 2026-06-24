@@ -329,7 +329,8 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
     self.playerItem = item
     
     let pixBuffAttributes: [String: Any] = [
-      kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+      kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+      kCVPixelBufferIOSurfacePropertiesKey as String: [:]
     ]
     let output = AVPlayerItemVideoOutput(pixelBufferAttributes: pixBuffAttributes)
     self.videoOutput = output
@@ -351,18 +352,21 @@ class EatshotsVideoPlayer: NSObject, FlutterTexture, FlutterStreamHandler {
   }
 
   @objc private func onDisplayLink(_ sender: CADisplayLink) {
-    guard let videoOutput = videoOutput else { return }
-    let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
-    if videoOutput.hasNewPixelBuffer(forItemTime: time) {
-      registry?.textureFrameAvailable(textureId)
-    }
+    registry?.textureFrameAvailable(textureId)
   }
 
   public func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
     guard let videoOutput = videoOutput else { return nil }
-    let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
-    if let buffer = videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
-      return Unmanaged.passRetained(buffer)
+    var time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
+    if !time.isValid || time.isIndefinite {
+      if let item = playerItem {
+        time = item.currentTime()
+      }
+    }
+    if videoOutput.hasNewPixelBuffer(forItemTime: time) {
+      if let buffer = videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
+        return Unmanaged.passRetained(buffer)
+      }
     }
     return nil
   }
@@ -954,11 +958,12 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         downloaderLock.lock()
         defer { downloaderLock.unlock() }
         
-        if let existing = activeDownloaders[url] {
+        let cleanUrl = url.eatshotsClean
+        if let existing = activeDownloaders[cleanUrl] {
             return existing
         }
         
-        let safeName = getSafeFileName(for: url)
+        let safeName = getSafeFileName(for: cleanUrl)
         let fileUrl = cacheDirectory.appendingPathComponent(safeName)
         let tempFileUrl = cacheDirectory.appendingPathComponent(safeName + ".tmp")
         let metaUrl = cacheDirectory.appendingPathComponent(safeName + ".meta")
@@ -967,29 +972,30 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         
         downloader.onCompleted = {
             downloaderLock.lock()
-            activeDownloaders.removeValue(forKey: url)
+            activeDownloaders.removeValue(forKey: cleanUrl)
             downloaderLock.unlock()
         }
         
         downloader.onError = { _ in
             downloaderLock.lock()
-            activeDownloaders.removeValue(forKey: url)
+            activeDownloaders.removeValue(forKey: cleanUrl)
             downloaderLock.unlock()
         }
         
-        activeDownloaders[url] = downloader
+        activeDownloaders[cleanUrl] = downloader
         return downloader
     }
     
     static func cancelDownloader(for url: URL) {
         downloaderLock.lock()
-        let downloader = activeDownloaders[url]
+        let cleanUrl = url.eatshotsClean
+        let downloader = activeDownloaders[cleanUrl]
         downloaderLock.unlock()
         
         if let downloader = downloader {
             downloader.cancel()
             downloaderLock.lock()
-            activeDownloaders.removeValue(forKey: url)
+            activeDownloaders.removeValue(forKey: cleanUrl)
             downloaderLock.unlock()
         }
     }
@@ -1000,8 +1006,9 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
     }
     
     static func getSafeFileName(for url: URL) -> String {
+        let cleanUrl = url.eatshotsClean
         let regex = try! NSRegularExpression(pattern: "[^a-zA-Z0-9]", options: .caseInsensitive)
-        let str = url.absoluteString
+        let str = cleanUrl.absoluteString
         let modString = regex.stringByReplacingMatches(in: str, options: [], range: NSRange(0..<str.utf16.count), withTemplate: "_")
         return String(modString.suffix(100)) + ".mp4"
     }
@@ -1108,13 +1115,14 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
     
     static func cancelPrefetch(url: URL) {
         downloaderLock.lock()
-        let downloader = activeDownloaders[url]
+        let cleanUrl = url.eatshotsClean
+        let downloader = activeDownloaders[cleanUrl]
         downloaderLock.unlock()
         
         if let downloader = downloader, downloader.isPrefetchOnly {
             downloader.cancel()
             downloaderLock.lock()
-            activeDownloaders.removeValue(forKey: url)
+            activeDownloaders.removeValue(forKey: cleanUrl)
             downloaderLock.unlock()
         }
     }
@@ -1161,7 +1169,8 @@ class EatshotsResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
         var components = URLComponents(url: originalUrl, resolvingAgainstBaseURL: false)
         components?.scheme = originalScheme
         if let httpUrl = components?.url {
-            if let downloader = EatshotsResourceLoaderDelegate.activeDownloaders[httpUrl] {
+            let cleanUrl = httpUrl.eatshotsClean
+            if let downloader = EatshotsResourceLoaderDelegate.activeDownloaders[cleanUrl] {
                 downloader.remove(request: loadingRequest)
             }
         }
@@ -1222,5 +1231,17 @@ extension HTTPURLResponse {
             }
             return nil
         }
+    }
+}
+
+extension URL {
+    var eatshotsClean: URL {
+        if var components = URLComponents(url: self, resolvingAgainstBaseURL: false) {
+            components.query = nil
+            if let cleanUrl = components.url {
+                return cleanUrl
+            }
+        }
+        return self
     }
 }

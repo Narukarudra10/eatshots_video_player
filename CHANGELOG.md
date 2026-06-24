@@ -1,13 +1,15 @@
-## 0.1.10
+## 0.2.0
 
-* iOS Xcode build fixes:
-  * Resolved additional Swift compiler errors regarding `Set` having no member `clear` by changing remaining occurrences of `.clear()` to `.removeAll()` in `EatshotsVideoPlayerPlugin.swift`.
-
-## 0.1.9
-
-* iOS Xcode build fixes for older platform targets:
-  * Resolved Swift compilation error (`Value of type 'Set<AVAssetResourceLoadingRequest>' has no member 'clear'`) in `EatshotsVideoPlayerPlugin.swift` by using the correct `.removeAll()` method.
-  * Resolved Swift compilation error (`'value(forHTTPHeaderField:)' is only available in iOS 13.0 or newer`) in `EatshotsVideoPlayerPlugin.swift` by introducing a `valueCompat(forHTTPHeaderField:)` fallback extension on `HTTPURLResponse` for iOS versions prior to 13.0.
+* HLS Support, iOS Caching & Platform Compatibility:
+  * Android: Added `media3-exoplayer-hls` dependency to ExoPlayer to natively support parsing and streaming of HLS (.m3u8) playlists.
+  * iOS Platform Compatibility: Resolved Swift compiler compatibility errors for older target versions (such as iOS 12):
+    * Replaced all `.clear()` calls on `Set` instances with `.removeAll()`.
+    * Added `valueCompat(forHTTPHeaderField:)` extension on `HTTPURLResponse` to safely handle HTTP headers under iOS 13.0.
+  * iOS HLS Rendering Fix (Black Screen):
+    * Trigger `textureFrameAvailable` unconditionally in `onDisplayLink` callback.
+    * Added `currentTime` fallback to `copyPixelBuffer` when `itemTime(forHostTime:)` returns an invalid/indefinite time. This resolves the black screen issue with HLS streams that have dynamic or rolling timelines.
+  * iOS Caching Fix for Dynamic URLs:
+    * Implemented query parameter stripping on iOS URLs when generating safe cache filenames and tracking active downloaders. This ensures that CDN URLs with dynamic tokens or dynamic signatures resolve to the same cache key/file, preventing cache misses and duplicate downloads.
 
 ## 0.1.8
 

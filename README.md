@@ -60,7 +60,7 @@ Add `eatshots_video_player` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  eatshots_video_player: ^0.1.10
+  eatshots_video_player: ^0.2.0
 ```
 
 ### 2. Import
