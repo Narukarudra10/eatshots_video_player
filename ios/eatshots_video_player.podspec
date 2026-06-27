@@ -4,18 +4,19 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'eatshots_video_player'
-  s.version          = '0.0.1'
-  s.summary          = 'A new Flutter plugin project.'
+  s.version          = '0.2.2'
+  s.summary          = 'A high-performance, Reels-style short-form video player plugin.'
   s.description      = <<-DESC
-A new Flutter plugin project.
+A high-performance, Reels-style short-form video player plugin for Flutter, optimized with aggressive caching and native controller pooling.
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/Narukarudra10/eatshots_video_player'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }
   s.source_files = 'eatshots_video_player/Sources/eatshots_video_player/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
+  s.frameworks = 'AVFoundation', 'Network', 'CoreTelephony', 'MobileCoreServices'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

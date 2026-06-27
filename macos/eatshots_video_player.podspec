@@ -4,12 +4,12 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'eatshots_video_player'
-  s.version          = '0.0.1'
-  s.summary          = 'A new Flutter plugin project.'
+  s.version          = '0.2.2'
+  s.summary          = 'A high-performance, Reels-style short-form video player plugin.'
   s.description      = <<-DESC
-A new Flutter plugin project.
+A high-performance, Reels-style short-form video player plugin for Flutter, optimized with aggressive caching and native controller pooling.
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/Narukarudra10/eatshots_video_player'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Your Company' => 'email@example.com' }
 
@@ -23,8 +23,8 @@ A new Flutter plugin project.
   # s.resource_bundles = {'eatshots_video_player_privacy' => ['eatshots_video_player/Sources/eatshots_video_player/PrivacyInfo.xcprivacy']}
 
   s.dependency 'FlutterMacOS'
-
   s.platform = :osx, '10.11'
+  s.frameworks = 'AVFoundation', 'Network', 'MobileCoreServices'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 end

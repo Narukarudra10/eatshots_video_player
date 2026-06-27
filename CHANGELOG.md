@@ -1,3 +1,9 @@
+## 0.2.2
+
+* iOS & macOS Maintenance:
+  * Added explicit framework dependencies (`AVFoundation`, `Network`, `CoreTelephony`, `MobileCoreServices`) to iOS and macOS podspecs to ensure more reliable linking and build stability.
+  * Updated podspec metadata and platform configurations.
+
 ## 0.2.1
 
 * Android Build Fix:
