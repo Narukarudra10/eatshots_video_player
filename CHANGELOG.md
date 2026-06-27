@@ -1,3 +1,8 @@
+## 0.2.1
+
+* Android Build Fix:
+  * Removed redundant `org.jetbrains.kotlin.android` plugin from `android/build.gradle.kts` to resolve build warnings/errors in newer Gradle versions.
+
 ## 0.2.0
 
 * HLS Support, iOS Caching & Platform Compatibility:
