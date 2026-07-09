@@ -1,6 +1,6 @@
-# eatshots_video_player_example
+# video_view_player_example
 
-Demonstrates how to use the eatshots_video_player plugin.
+Demonstrates how to use the video_view_player plugin.
 
 ## Getting Started
 

@@ -1,3 +1,9 @@
+## 0.2.4 (DEPRECATED)
+
+* **This package has been deprecated and renamed to `video_view_player`.**
+* All further updates and features will be released under `video_view_player`.
+* All public APIs in this package have been annotated as `@deprecated`. Please migrate to `video_view_player`.
+
 ## 0.2.2
 
 * iOS & macOS Maintenance:
@@ -52,24 +58,24 @@
 ## 0.1.5
 
 * iOS Xcode Build Fix:
-  * Resolved Swift compilation error (`'nil' is not compatible with expected argument type 'any FlutterTexture'`) in `VideoViewPlayerPlugin.swift`.
-  * Refactored `VideoViewPlayer` initialization to register the player instance with the texture registry after initialization, matching the macOS plugin implementation pattern.
+  * Resolved Swift compilation error (`'nil' is not compatible with expected argument type 'any FlutterTexture'`) in `EatshotsVideoPlayerPlugin.swift`.
+  * Refactored `EatshotsVideoPlayer` initialization to register the player instance with the texture registry after initialization, matching the macOS plugin implementation pattern.
 
 ## 0.1.4
 
 * Native Lifecycle & Log Warning Fixes:
   * Implemented `onActivityPaused` callback inside the Android native Activity callbacks to loop through all active players and trigger a native pause.
-  * Added `handleActivityPaused()` in the `VideoViewPlayer` class, which calls `exoPlayer?.playWhenReady = false` to stop frame decoding before the OS suspends the graphics surface rendering, preventing "pipeline full" log warnings.
+  * Added `handleActivityPaused()` in the `EatshotsVideoPlayer` class, which calls `exoPlayer?.playWhenReady = false` to stop frame decoding before the OS suspends the graphics surface rendering, preventing "pipeline full" log warnings.
 
 ## 0.1.3
 
 * Android Build Fix:
-  * Added missing `android.net.ConnectivityManager` import in `VideoViewPlayerPlugin.kt` to resolve Gradle Kotlin compiler errors.
+  * Added missing `android.net.ConnectivityManager` import in `EatshotsVideoPlayerPlugin.kt` to resolve Gradle Kotlin compiler errors.
 
 ## 0.1.2
 
 * Connection-Aware Native Caching & Performance Optimizations:
-  * Implemented an EventChannel stream (`video_view_player/network_events`) on Android and iOS to broadcast network connection status reactively to Dart.
+  * Implemented an EventChannel stream (`eatshots_video_player/network_events`) on Android and iOS to broadcast network connection status reactively to Dart.
   * Added native bandwidth estimation using ExoPlayer's `DefaultBandwidthMeter` on Android to dynamically adjust background prefetch sizes based on real-time speeds.
   * Implemented `AVAssetResourceLoaderDelegate` (`EatshotsResourceLoaderDelegate`) in Swift on iOS to cache progressive streaming MP4 videos directly to the local disk caches directory.
   * Optimized ExoPlayer's load control buffering settings for fast startup: reduced initial play buffer to 250ms on Wi-Fi and 500ms on Cellular data.
@@ -118,19 +124,19 @@
   * Enabled client network access entitlements in the macOS example runner to allow playing video streams in sandboxed mode.
   * Declared macOS platform support in pubspec.yaml.
 * Fix fast-scrolling concurrency crashes:
-  * Implemented a coalesced sequential update queue in `VideoViewPlayerPoolManager` to serialize active index updates and skip intermediate indices during fast scrolling.
-  * Added an initialization guard to `VideoViewPlayerController.setDataSource` to wait for native player setup to finish before changing data sources, avoiding native decoder races and crashes.
+  * Implemented a coalesced sequential update queue in `EatshotsVideoPlayerPoolManager` to serialize active index updates and skip intermediate indices during fast scrolling.
+  * Added an initialization guard to `EatshotsVideoPlayerController.setDataSource` to wait for native player setup to finish before changing data sources, avoiding native decoder races and crashes.
 
 ## 0.0.5
 
-* Updated repository and homepage URLs to the correct GitHub path (`Narukarudra10/video_view_player`).
+* Updated repository and homepage URLs to the correct GitHub path (`Narukarudra10/eatshots_video_player`).
 * Updated README dependency reference versions.
 
 ## 0.0.4
 
 * Expanded documentation in the README with:
   * Feature overview highlighting native controller pooling, aggressive caching, and background prefetching.
-  * API reference documentation for `VideoViewPlayerController`.
+  * API reference documentation for `EatshotsVideoPlayerController`.
   * Detailed usage example code for initialization and playback settings.
 
 ## 0.0.3
@@ -142,10 +148,10 @@
 ## 0.0.2
 
 * Expanded source capabilities:
-  * Added `VideoViewPlayerController.networkUrl`, `.file`, and `.asset` constructors.
+  * Added `EatshotsVideoPlayerController.networkUrl`, `.file`, and `.asset` constructors.
   * Added volume controls (`setVolume`) and looping toggles (`setLooping`) in Dart API, platform interface, and Android/iOS native implementations.
 
 ## 0.0.1
 
-* Initial release of video_view_player.
+* Initial release of eatshots_video_player.
 

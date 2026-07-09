@@ -9,13 +9,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:eatshots_video_player/eatshots_video_player.dart';
+import 'package:video_view_player/video_view_player.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('getPlatformVersion test', (WidgetTester tester) async {
-    final EatshotsVideoPlayerPlatformVersion plugin = EatshotsVideoPlayerPlatformVersion();
+    final VideoViewPlayerPlatformVersion plugin = VideoViewPlayerPlatformVersion();
     final String? version = await plugin.getPlatformVersion();
     // The version string depends on the host platform running the test, so
     // just assert that some non-empty string is returned.

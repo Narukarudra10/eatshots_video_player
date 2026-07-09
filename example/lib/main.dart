@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
-import 'package:eatshots_video_player/eatshots_video_player.dart';
+import 'package:video_view_player/video_view_player.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,7 +57,7 @@ class _FeedScreenState extends State<FeedScreen> {
     'https://github.com/intel-iot-devkit/sample-videos/raw/master/people-detection.mp4',
   ];
 
-  late EatshotsVideoPlayerPoolManager _poolManager;
+  late VideoViewPlayerPoolManager _poolManager;
   final PageController _pageController = PageController();
   int _currentIndex = 0;
   bool _showDebug = true;
@@ -65,7 +65,7 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
-    _poolManager = EatshotsVideoPlayerPoolManager(urls: _videoUrls);
+    _poolManager = VideoViewPlayerPoolManager(urls: _videoUrls);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _poolManager.updateActiveIndex(0);
     });
@@ -87,7 +87,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<EatshotsVideoPlayerPoolManager>.value(
+    return ChangeNotifierProvider<VideoViewPlayerPoolManager>.value(
       value: _poolManager,
       child: Scaffold(
         appBar: AppBar(
@@ -202,13 +202,13 @@ class DebugPoolStatsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final poolManager = Provider.of<EatshotsVideoPlayerPoolManager>(context);
+    final poolManager = Provider.of<VideoViewPlayerPoolManager>(context);
 
     // List of active controllers to merge listeners
     final activeControllers = urls
         .map((url) => poolManager.getControllerForUrl(url))
         .where((c) => c != null)
-        .cast<EatshotsVideoPlayerController>()
+        .cast<VideoViewPlayerController>()
         .toList();
 
     return AnimatedBuilder(
@@ -373,7 +373,7 @@ class _FeedItemWidgetState extends State<FeedItemWidget> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    final poolManager = Provider.of<EatshotsVideoPlayerPoolManager>(context);
+    final poolManager = Provider.of<VideoViewPlayerPoolManager>(context);
     final controller = poolManager.getControllerForUrl(widget.url);
 
     if (controller == null) {
@@ -382,7 +382,7 @@ class _FeedItemWidgetState extends State<FeedItemWidget> with SingleTickerProvid
       );
     }
 
-    return ListenableProvider<EatshotsVideoPlayerController>.value(
+    return ListenableProvider<VideoViewPlayerController>.value(
       value: controller,
       child: GestureDetector(
         onTap: () {
@@ -579,18 +579,18 @@ class VideoPlayerSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Provider.of<EatshotsVideoPlayerController>(context, listen: false);
+    final controller = Provider.of<VideoViewPlayerController>(context, listen: false);
     
     // Select specific values to trigger rebuilds only when they change.
-    final isInitialized = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isInitialized);
-    final hasError = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.hasError);
-    final size = context.select<EatshotsVideoPlayerController, Size>((c) => c.value.size);
-    final textureId = context.select<EatshotsVideoPlayerController, int?>((c) => c.textureId);
+    final isInitialized = context.select<VideoViewPlayerController, bool>((c) => c.value.isInitialized);
+    final hasError = context.select<VideoViewPlayerController, bool>((c) => c.value.hasError);
+    final size = context.select<VideoViewPlayerController, Size>((c) => c.value.size);
+    final textureId = context.select<VideoViewPlayerController, int?>((c) => c.textureId);
 
     debugPrint("VideoPlayerSurface: Build for texture $textureId (isInitialized: $isInitialized, hasError: $hasError, size: $size)");
 
     if (hasError) {
-      final error = context.select<EatshotsVideoPlayerController, String?>((c) => c.value.errorDescription);
+      final error = context.select<VideoViewPlayerController, String?>((c) => c.value.errorDescription);
       return Container(
         color: Colors.black,
         alignment: Alignment.center,
@@ -653,7 +653,7 @@ class VideoPlayerSurface extends StatelessWidget {
             child: SizedBox(
               width: videoWidth,
               height: videoHeight,
-              child: EatshotsVideoPlayer(controller: controller),
+              child: VideoViewPlayer(controller: controller),
             ),
           ),
         ),
@@ -691,10 +691,10 @@ class CenterPlayPauseOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isInitialized = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isInitialized);
-    final isPlaying = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isPlaying);
-    final isBuffering = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isBuffering);
-    final hasError = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.hasError);
+    final isInitialized = context.select<VideoViewPlayerController, bool>((c) => c.value.isInitialized);
+    final isPlaying = context.select<VideoViewPlayerController, bool>((c) => c.value.isPlaying);
+    final isBuffering = context.select<VideoViewPlayerController, bool>((c) => c.value.isBuffering);
+    final hasError = context.select<VideoViewPlayerController, bool>((c) => c.value.hasError);
 
     if (isInitialized && !isPlaying && !isBuffering && !hasError) {
       return Align(
@@ -726,9 +726,9 @@ class BufferingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isInitialized = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isInitialized);
-    final isBuffering = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isBuffering);
-    final hasError = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.hasError);
+    final isInitialized = context.select<VideoViewPlayerController, bool>((c) => c.value.isInitialized);
+    final isBuffering = context.select<VideoViewPlayerController, bool>((c) => c.value.isBuffering);
+    final hasError = context.select<VideoViewPlayerController, bool>((c) => c.value.hasError);
 
     if (isInitialized && isBuffering && !hasError) {
       return const Center(
@@ -747,9 +747,9 @@ class VideoProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isInitialized = context.select<EatshotsVideoPlayerController, bool>((c) => c.value.isInitialized);
-    final position = context.select<EatshotsVideoPlayerController, Duration>((c) => c.value.position);
-    final duration = context.select<EatshotsVideoPlayerController, Duration>((c) => c.value.duration);
+    final isInitialized = context.select<VideoViewPlayerController, bool>((c) => c.value.isInitialized);
+    final position = context.select<VideoViewPlayerController, Duration>((c) => c.value.position);
+    final duration = context.select<VideoViewPlayerController, Duration>((c) => c.value.duration);
 
     if (!isInitialized || duration.inMilliseconds <= 0) {
       return const SizedBox(height: 8);
@@ -813,7 +813,7 @@ class NetworkHudWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final poolManager = Provider.of<EatshotsVideoPlayerPoolManager>(context);
+    final poolManager = Provider.of<VideoViewPlayerPoolManager>(context);
     final netType = poolManager.effectiveNetworkType;
     final isSimulated = poolManager.simulatedNetworkType != null;
 

@@ -5,8 +5,8 @@
 import FlutterMacOS
 import Foundation
 
-import eatshots_video_player
+import video_view_player
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
-  EatshotsVideoPlayerPlugin.register(with: registry.registrar(forPlugin: "EatshotsVideoPlayerPlugin"))
+  VideoViewPlayerPlugin.register(with: registry.registrar(forPlugin: "VideoViewPlayerPlugin"))
 }

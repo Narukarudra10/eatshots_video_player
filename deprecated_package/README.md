@@ -1,8 +1,13 @@
-# video_view_player
+# eatshots_video_player
 
-[![pub package](https://img.shields.io/pub/v/video_view_player.svg)](https://pub.dev/packages/video_view_player)
+> [!WARNING]
+> **This package has been deprecated and renamed to [video_view_player](https://pub.dev/packages/video_view_player).**
+> All future developments, updates, and releases will only occur under `video_view_player`.
+> Please update your dependencies to use `video_view_player` as soon as possible.
+
+[![pub package](https://img.shields.io/pub/v/eatshots_video_player.svg)](https://pub.dev/packages/eatshots_video_player)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20macos-lightgrey.svg)](https://pub.dev/packages/video_view_player)
+[![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20macos-lightgrey.svg)](https://pub.dev/packages/eatshots_video_player)
 
 A premium, high-performance, Reels/TikTok-style short-form video player plugin for Flutter. Optimized at the native layer with aggressive caching, connection-aware background prefetching, and native controller pooling to deliver zero-lag vertical scrolling feeds.
 
@@ -11,21 +16,21 @@ A premium, high-performance, Reels/TikTok-style short-form video player plugin f
 ## ❤️ Support the Project
 
 If you love using this package and find it helpful, please support it!
-* **Like it** on [pub.dev](https://pub.dev/packages/video_view_player)
-* **Star** the repository on [GitHub](https://github.com/Narukarudra10/video_view_player)
+* **Like it** on [pub.dev](https://pub.dev/packages/eatshots_video_player)
+* **Star** the repository on [GitHub](https://github.com/Narukarudra10/eatshots_video_player)
 
 Your support helps keep this project active and updated!
 
 ---
 
-## ⚡ Why video_view_player?
+## ⚡ Why eatshots_video_player?
 
 Standard Flutter video players (like the official `video_player` package) are designed for single-video or long-form playback. When used in rapid vertical scrolling feeds, they suffer from:
 - **High Startup Latency:** Default players buffer 2.5+ seconds of video before starting playback, creating a noticeable delay when swiping.
 - **Decoder Overhead:** Constantly initializing and disposing of native player instances causes CPU spikes, frame drops, and memory leaks.
 - **Race Conditions:** Fast scrolling triggers overlapping asynchronous initialization/disposal loops, causing native-level crashes.
 
-`video_view_player` resolves these performance bottlenecks by optimizing the playback pipeline directly at the native layer (using Android Media3 ExoPlayer and iOS AVFoundation).
+`eatshots_video_player` resolves these performance bottlenecks by optimizing the playback pipeline directly at the native layer (using Android Media3 ExoPlayer and iOS AVFoundation).
 
 ---
 
@@ -38,7 +43,7 @@ We tuned ExoPlayer's `DefaultLoadControl` on Android to reduce the initial start
 Instead of destroying and recreating players on scroll, the package maintains a maximum of **3 active controller instances** (previous, current, next). When scrolling, idle decoders are reused by swapping the media datasource under the hood rather than disposing of the player, keeping CPU and memory usage extremely low.
 
 ### 3. Concurrency & Fast-Scroll Guards
-Rapid scrolling is shielded from race conditions via a sequential update queue in `VideoViewPlayerPoolManager`. The queue serializes active updates and skips intermediate video sources if the user scrolls past them quickly, preventing decoder races and native-level crashes.
+Rapid scrolling is shielded from race conditions via a sequential update queue in `EatshotsVideoPlayerPoolManager`. The queue serializes active updates and skips intermediate video sources if the user scrolls past them quickly, preventing decoder races and native-level crashes.
 
 ### 4. Connection-Aware Adaptive Prefetching
 The pool manager dynamically adjusts prefetch parameters based on the device's connection quality:
@@ -56,17 +61,17 @@ Utilizes ExoPlayer's `SimpleCache` (Android) and system-level HTTP caching (iOS)
 
 ### 1. Add Dependency
 
-Add `video_view_player` to your `pubspec.yaml`:
+Add `eatshots_video_player` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  video_view_player: ^0.2.2
+  eatshots_video_player: ^0.2.2
 ```
 
 ### 2. Import
 
 ```dart
-import 'package:video_view_player/video_view_player.dart';
+import 'package:eatshots_video_player/eatshots_video_player.dart';
 ```
 
 ---
@@ -85,13 +90,13 @@ class SingleVideoScreen extends StatefulWidget {
 }
 
 class _SingleVideoScreenState extends State<SingleVideoScreen> {
-  late VideoViewPlayerController _controller;
+  late EatshotsVideoPlayerController _controller;
 
   @override
   void initState() {
     super.initState();
     // Support asset, file, or network sources
-    _controller = VideoViewPlayerController.asset('assets/my_video.mp4')
+    _controller = EatshotsVideoPlayerController.asset('assets/my_video.mp4')
       ..initialize().then((_) {
         if (mounted) setState(() {});
       });
@@ -115,14 +120,14 @@ class _SingleVideoScreenState extends State<SingleVideoScreen> {
     }
     return AspectRatio(
       aspectRatio: _controller.value.aspectRatio,
-      child: VideoViewPlayer(controller: _controller),
+      child: EatshotsVideoPlayer(controller: _controller),
     );
   }
 }
 ```
 
 ### Example 2: Reels/TikTok-Style Vertical Feed (Advanced)
-Use `VideoViewPlayerPoolManager` along with a vertical `PageView` to achieve a high-performance scrolling feed:
+Use `EatshotsVideoPlayerPoolManager` along with a vertical `PageView` to achieve a high-performance scrolling feed:
 
 ```dart
 class ShortFeedScreen extends StatefulWidget {
@@ -139,13 +144,13 @@ class _ShortFeedScreenState extends State<ShortFeedScreen> {
     'https://example.com/video3.mp4',
   ];
 
-  late VideoViewPlayerPoolManager _poolManager;
+  late EatshotsVideoPlayerPoolManager _poolManager;
   final PageController _pageController = PageController();
 
   @override
   void initState() {
     super.initState();
-    _poolManager = VideoViewPlayerPoolManager(urls: _videoUrls);
+    _poolManager = EatshotsVideoPlayerPoolManager(urls: _videoUrls);
     
     // Initialize the pool at page 0
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,7 +197,7 @@ class _ShortFeedScreenState extends State<ShortFeedScreen> {
               child: SizedBox(
                 width: controller.value.size.width,
                 height: controller.value.size.height,
-                child: VideoViewPlayer(controller: controller),
+                child: EatshotsVideoPlayer(controller: controller),
               ),
             );
           },
@@ -207,15 +212,15 @@ class _ShortFeedScreenState extends State<ShortFeedScreen> {
 
 ## 🛠️ API Reference
 
-### `VideoViewPlayerController`
+### `EatshotsVideoPlayerController`
 Main controller class managing player states and native interactions.
 
 | Method / Property | Description |
 |---|---|
-| `VideoViewPlayerController(String dataSource)` | Creates a controller with a custom datasource URL. |
-| `VideoViewPlayerController.networkUrl(Uri url)` | Named constructor for network video URLs. |
-| `VideoViewPlayerController.asset(String asset)` | Named constructor for Flutter app assets. |
-| `VideoViewPlayerController.file(dynamic file)` | Named constructor for local files. |
+| `EatshotsVideoPlayerController(String dataSource)` | Creates a controller with a custom datasource URL. |
+| `EatshotsVideoPlayerController.networkUrl(Uri url)` | Named constructor for network video URLs. |
+| `EatshotsVideoPlayerController.asset(String asset)` | Named constructor for Flutter app assets. |
+| `EatshotsVideoPlayerController.file(dynamic file)` | Named constructor for local files. |
 | `initialize()` | Resolves the native texture and prepares the media decoder. |
 | `play()` | Starts or resumes video playback. |
 | `pause()` | Pauses video playback. |
@@ -226,7 +231,7 @@ Main controller class managing player states and native interactions.
 | `setDataSource(String url)` | Swaps the video source without destroying the native decoder (recycles instance). |
 | `dispose()` | Cleans up the native player, events channel, and texture bindings. |
 
-### `VideoViewValue`
+### `EatshotsVideoValue`
 Exposes the reactive state of a player instance via `ValueNotifier`.
 
 | Property | Type | Description |
@@ -242,14 +247,14 @@ Exposes the reactive state of a player instance via `ValueNotifier`.
 | `errorDescription`| `String?` | Error description details, if any. |
 | `aspectRatio` | `double` | Pre-calculated aspect ratio (defaults to `9/16` if uninitialized). |
 
-### `VideoViewPlayerPoolManager`
+### `EatshotsVideoPlayerPoolManager`
 Manages native video player recycling, caching, and network-aware prefetching.
 
 | Method / Property | Type / Description |
 |---|---|
-| `VideoViewPlayerPoolManager({required List<String> urls})` | Creates a pool manager managing the complete list of feed URLs. |
+| `EatshotsVideoPlayerPoolManager({required List<String> urls})` | Creates a pool manager managing the complete list of feed URLs. |
 | `updateActiveIndex(int currentIndex)` | Tells the manager to shift the active playing index, trigger recycling, and adapt prefetching. |
-| `getControllerForUrl(String url)` | Returns `VideoViewPlayerController?` for a URL if it's currently loaded in the pool. |
+| `getControllerForUrl(String url)` | Returns `EatshotsVideoPlayerController?` for a URL if it's currently loaded in the pool. |
 | `prefetch(String url, {required int bytes})` | Explicitly triggers background prefetching of the first `bytes` of a video. |
 | `dispose()` | Disposes all players in the pool and releases event channels. |
 

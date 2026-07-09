@@ -2,7 +2,7 @@ plugins {
     id("com.android.library")
 }
 
-group = "com.example.eatshots_video_player"
+group = "com.example.video_view_player"
 version = "1.0-SNAPSHOT"
 
 rootProject.allprojects {
@@ -15,7 +15,7 @@ rootProject.allprojects {
 configure<com.android.build.api.dsl.LibraryExtension> {
     compileSdk = 36
     
-    namespace = "com.example.eatshots_video_player"
+    namespace = "com.example.video_view_player"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8

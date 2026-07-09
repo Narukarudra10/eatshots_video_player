@@ -1,1 +1,1 @@
-rootProject.name = "eatshots_video_player"
+rootProject.name = "video_view_player"

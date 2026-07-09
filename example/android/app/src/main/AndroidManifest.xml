@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="eatshots_video_player_example"
+        android:label="video_view_player_example"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
