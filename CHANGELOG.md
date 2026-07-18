@@ -1,3 +1,15 @@
+## 0.2.3
+
+* Android Kotlin & Media3 Optimizations:
+  * Resolved Java/Kotlin deprecation warnings in `VideoCache.kt` by scoping `@Suppress("DEPRECATION")` to legacy network API resolution logic.
+  * Replaced hardcoded User-Agent strings with standard `Util.getUserAgent(context, "video_view_player")` in Android native player and cache datasource factories.
+  * Fixed `VideoCache.prefetch()` to respect explicit non-zero `prefetchBytes` parameter overrides passed from Dart/Flutter.
+* Documentation & pub.dev Score:
+  * Added 100% `///` Dartdoc comments to all public classes, constructors, methods, getters, and properties across `lib/` to achieve full points on pub.dev.
+* Legacy Cleanup & Renaming:
+  * Refactored and renamed all legacy `eatshots` class names, GCD queues, custom URL schemes, and cache directories across Android, iOS, macOS, Dart, and unit tests to `video_view_player` / `VideoView*` / `video_view_cache`.
+  * Removed the deprecated `deprecated_package/` workspace directory.
+
 ## 0.2.2
 
 * iOS & macOS Maintenance:

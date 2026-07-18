@@ -18,10 +18,10 @@ void main() {
   });
 
   test('getPlatformVersion', () async {
-    VideoViewPlayerPlatformVersion eatshotsVideoPlayerPlugin = VideoViewPlayerPlatformVersion();
+    VideoViewPlayerPlatformVersion videoViewPlayerPlugin = VideoViewPlayerPlatformVersion();
     MockVideoViewPlayerPlatform fakePlatform = MockVideoViewPlayerPlatform();
     VideoViewPlayerPlatform.instance = fakePlatform;
 
-    expect(await eatshotsVideoPlayerPlugin.getPlatformVersion(), '42');
+    expect(await videoViewPlayerPlugin.getPlatformVersion(), '42');
   });
 }

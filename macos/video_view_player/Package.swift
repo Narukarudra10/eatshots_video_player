@@ -9,7 +9,7 @@ let package = Package(
         .macOS("10.15")
     ],
     products: [
-        .library(name: "eatshots-video-player", targets: ["video_view_player"])
+        .library(name: "video_view_player", targets: ["video_view_player"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")

@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'video_view_player_controller.dart';
 import 'video_view_player_platform_interface.dart';
 
+/// Manages native video player recycling, prefetching, and network-adaptive feeds.
 class VideoViewPlayerPoolManager extends ChangeNotifier {
   // A list containing at most 3 controller instances
   final List<VideoViewPlayerController> _pool = [];
   // Mapping from video URL to the active controller managing it
   final Map<String, VideoViewPlayerController> _activeControllers = {};
-  // The complete list of video URLs in the feed
+
+  /// The complete ordered list of video URLs in the scrolling feed.
   final List<String> urls;
 
   int? _nextIndexToUpdate;
@@ -17,15 +19,20 @@ class VideoViewPlayerPoolManager extends ChangeNotifier {
 
   // Connection & Adaptive properties
   String _networkType = 'WIFI';
+
+  /// Real-time detected network connection type (`WIFI`, `5G`, `4G`, `3G`, or `NONE`).
   String get networkType => _networkType;
 
   String? _simulatedNetworkType;
+
+  /// Optional network type override for testing adaptive buffer behaviors.
   String? get simulatedNetworkType => _simulatedNetworkType;
   set simulatedNetworkType(String? value) {
     _simulatedNetworkType = value;
     notifyListeners();
   }
 
+  /// Effective network type considering active simulated override or real hardware network status.
   String get effectiveNetworkType => _simulatedNetworkType ?? _networkType;
 
   // A set to track urls that are currently undergoing background prefetching
@@ -33,6 +40,7 @@ class VideoViewPlayerPoolManager extends ChangeNotifier {
   
   StreamSubscription<String>? _networkSubscription;
 
+  /// Creates a [VideoViewPlayerPoolManager] managing the specified feed [urls].
   VideoViewPlayerPoolManager({required this.urls}) {
     _networkSubscription = VideoViewPlayerPlatform.instance.onNetworkTypeChanged.listen((netType) {
       if (_networkType != netType) {
@@ -42,7 +50,7 @@ class VideoViewPlayerPoolManager extends ChangeNotifier {
     });
   }
 
-  /// Prefetch the first N bytes of a video to the cache
+  /// Triggers background prefetching of the first [bytes] of a video [url].
   Future<void> prefetch(String url, {required int bytes}) async {
     try {
       await VideoViewPlayerPlatform.instance.prefetch(url, bytes);
@@ -53,7 +61,7 @@ class VideoViewPlayerPoolManager extends ChangeNotifier {
     }
   }
 
-  /// Updates active controllers based on the current scroll index.
+  /// Updates active controllers based on the current scroll [currentIndex].
   /// Instantiates at most 3 controllers, recycling idle controllers
   /// using URL swapping rather than disposing and recreating them.
   Future<void> updateActiveIndex(int currentIndex) async {
@@ -174,12 +182,12 @@ class VideoViewPlayerPoolManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Retrieves the active controller for a URL, if any
+  /// Retrieves the active controller for a given [url], if assigned in the pool.
   VideoViewPlayerController? getControllerForUrl(String url) {
     return _activeControllers[url];
   }
 
-  /// Clear resources and dispose all controllers
+  /// Disposes all managed player controllers and releases network event subscriptions.
   @override
   Future<void> dispose() async {
     await _networkSubscription?.cancel();

@@ -7,6 +7,7 @@ import android.net.Uri
 import android.telephony.TelephonyManager
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
@@ -28,7 +29,7 @@ object VideoCache {
     @Synchronized
     fun getCache(context: Context): SimpleCache {
         if (cache == null) {
-            val cacheDir = File(context.cacheDir, "eatshots_video_cache")
+            val cacheDir = File(context.cacheDir, "video_view_cache")
             val evictor = LeastRecentlyUsedCacheEvictor(200 * 1024 * 1024) // 200MB limit
             val databaseProvider = StandaloneDatabaseProvider(context)
             cache = SimpleCache(cacheDir, evictor, databaseProvider)
@@ -50,9 +51,11 @@ object VideoCache {
             return
         }
 
-        // Dynamic prefetch size based on bandwidth meter or network type
+        // Dynamic prefetch size based on explicit parameter, bandwidth meter, or network type
         val estimatedBitrate = getBandwidthMeter(context).bitrateEstimate
-        val finalPrefetchBytes = if (estimatedBitrate > 0) {
+        val finalPrefetchBytes = if (prefetchBytes > 0) {
+            prefetchBytes
+        } else if (estimatedBitrate > 0) {
             if (estimatedBitrate >= 10_000_000) { // >= 10 Mbps (WiFi / 5G speed)
                 1500 * 1024L // 1.5 MB
             } else if (estimatedBitrate >= 2_000_000) { // >= 2 Mbps (4G speed)
@@ -80,7 +83,7 @@ object VideoCache {
             .build()
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+            .setUserAgent(Util.getUserAgent(context, "video_view_player"))
             .setAllowCrossProtocolRedirects(true)
             .setTransferListener(getBandwidthMeter(context))
 
@@ -127,6 +130,7 @@ object VideoCache {
         }
     }
 
+    @Suppress("DEPRECATION")
     fun getNetworkType(context: Context): String {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "NONE"
@@ -172,17 +176,14 @@ object VideoCache {
                     }
                 }
             } else {
-                @Suppress("DEPRECATION")
                 val activeNetworkInfo = cm.activeNetworkInfo
                 if (activeNetworkInfo == null || !activeNetworkInfo.isConnected) return "NONE"
                 
-                @Suppress("DEPRECATION")
                 val type = activeNetworkInfo.type
                 if (type == ConnectivityManager.TYPE_WIFI || type == ConnectivityManager.TYPE_ETHERNET) {
                     return "WIFI"
                 }
                 if (type == ConnectivityManager.TYPE_MOBILE) {
-                    @Suppress("DEPRECATION")
                     val subType = activeNetworkInfo.subtype
                     return when (subType) {
                         TelephonyManager.NETWORK_TYPE_LTE -> "4G"

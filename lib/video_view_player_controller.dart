@@ -4,16 +4,33 @@ import 'package:flutter/widgets.dart';
 
 import 'video_view_player_platform_interface.dart';
 
+/// Represents the reactive state of a [VideoViewPlayerController].
 class VideoViewValue {
+  /// Total duration of the loaded video.
   final Duration duration;
+
+  /// Current playback position of the video.
   final Duration position;
+
+  /// Width and height dimensions of the video stream.
   final Size size;
+
+  /// Whether the native player has completed initial metadata loading.
   final bool isInitialized;
+
+  /// Whether the video is currently actively playing.
   final bool isPlaying;
+
+  /// Whether the player is currently waiting for network data buffering.
   final bool isBuffering;
+
+  /// Whether the video automatically loops upon reaching the end.
   final bool isLooping;
+
+  /// Description of any playback error encountered, or `null` if healthy.
   final String? errorDescription;
 
+  /// Constructs a [VideoViewValue] snapshot with default or explicit values.
   const VideoViewValue({
     this.duration = Duration.zero,
     this.position = Duration.zero,
@@ -25,9 +42,13 @@ class VideoViewValue {
     this.errorDescription,
   });
 
+  /// True if an error description is present.
   bool get hasError => errorDescription != null;
+
+  /// Calculated aspect ratio (width / height) or `9 / 16` if uninitialized.
   double get aspectRatio => size.width == 0 || size.height == 0 ? 9 / 16 : size.width / size.height;
 
+  /// Creates a copy of [VideoViewValue] with updated fields.
   VideoViewValue copyWith({
     Duration? duration,
     Duration? position,
@@ -51,6 +72,7 @@ class VideoViewValue {
   }
 }
 
+/// Controls native video decoding, playback states, and hardware texture mapping.
 class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
   String _dataSource;
   int? _textureId;
@@ -64,26 +86,36 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
   bool _looping = true;
   bool _shouldPlay = false;
 
+  /// Creates a controller for a given [dataSource] string URL.
   VideoViewPlayerController(String dataSource)
       : _dataSource = dataSource,
         super(const VideoViewValue());
 
+  /// Named constructor for network video streams from a [url].
   VideoViewPlayerController.networkUrl(Uri url)
       : _dataSource = url.toString(),
         super(const VideoViewValue());
 
+  /// Named constructor for local filesystem files.
   VideoViewPlayerController.file(dynamic file)
       : _dataSource = 'file://${file.path}',
         super(const VideoViewValue());
 
+  /// Named constructor for local Flutter app assets.
   VideoViewPlayerController.asset(String asset)
       : _dataSource = 'asset://$asset',
         super(const VideoViewValue());
 
+  /// Hardware texture ID assigned by the native platform engine.
   int? get textureId => _textureId;
+
+  /// Whether this controller instance has been disposed.
   bool get isDisposed => _isDisposed;
+
+  /// The active video data source URL or path string.
   String get dataSource => _dataSource;
 
+  /// Initializes the native video player and binds hardware texture rendering.
   Future<void> initialize() async {
     if (_isDisposed) return;
     _initializationFuture = _initializeInternal();
@@ -92,13 +124,13 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
 
   Future<void> _initializeInternal() async {
     try {
-      debugPrint("EatshotsPlayerController: Initializing for $_dataSource");
+      debugPrint("VideoViewPlayerController: Initializing for $_dataSource");
       final id = await VideoViewPlayerPlatform.instance.initialize(_dataSource);
       _textureId = id;
       value = value.copyWith(isInitialized: false, errorDescription: null, isLooping: _looping);
       notifyListeners(); // Notify listeners that textureId is resolved
 
-      debugPrint("EatshotsPlayerController: Initialized texture id $id, listening to EventChannel...");
+      debugPrint("VideoViewPlayerController: Initialized texture id $id, listening to EventChannel...");
       // Listen to EventChannel for state updates
       _eventSubscription = EventChannel('video_view_player/videoEvents_$id')
           .receiveBroadcastStream()
@@ -114,7 +146,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
         _startPositionTimer();
       }
     } catch (e, stack) {
-      debugPrint("EatshotsPlayerController: Initialization failed for $_dataSource: $e\n$stack");
+      debugPrint("VideoViewPlayerController: Initialization failed for $_dataSource: $e\n$stack");
       _handleError(e);
       rethrow;
     }
@@ -123,7 +155,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
   void _handleEvent(dynamic event) {
     if (_isDisposed) return;
     final Map<dynamic, dynamic> map = event as Map<dynamic, dynamic>;
-    debugPrint("EatshotsPlayerController: Received event: ${map['event']} for texture $_textureId details: $map");
+    debugPrint("VideoViewPlayerController: Received event: ${map['event']} for texture $_textureId details: $map");
     switch (map['event']) {
       case 'initialized':
         value = value.copyWith(
@@ -134,7 +166,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
             (map['height'] as num).toDouble(),
           ),
         );
-        debugPrint("EatshotsPlayerController: Updated state for texture $_textureId: isInitialized=true, size=${value.size}");
+        debugPrint("VideoViewPlayerController: Updated state for texture $_textureId: isInitialized=true, size=${value.size}");
         break;
       case 'bufferingStart':
         value = value.copyWith(isBuffering: true);
@@ -156,12 +188,13 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
 
   void _handleError(dynamic error) {
     if (_isDisposed) return;
-    debugPrint("EatshotsPlayerController: Error on EventChannel for texture $_textureId: $error");
+    debugPrint("VideoViewPlayerController: Error on EventChannel for texture $_textureId: $error");
     value = value.copyWith(
       errorDescription: error is PlatformException ? error.message : error.toString(),
     );
   }
 
+  /// Starts or resumes video playback.
   Future<void> play() async {
     if (_isDisposed) return;
     _shouldPlay = true;
@@ -172,6 +205,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     _startPositionTimer();
   }
 
+  /// Pauses video playback.
   Future<void> pause() async {
     if (_isDisposed) return;
     _shouldPlay = false;
@@ -182,6 +216,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     _stopPositionTimer();
   }
 
+  /// Seeks playback to the specified [position].
   Future<void> seekTo(Duration position) async {
     final id = _textureId;
     if (id == null || _isDisposed) return;
@@ -189,12 +224,14 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     value = value.copyWith(position: position);
   }
 
+  /// Sets the native player playback [speed] (e.g. `1.0`, `1.5`, `2.0`).
   Future<void> setPlaybackSpeed(double speed) async {
     final id = _textureId;
     if (id == null || _isDisposed) return;
     await VideoViewPlayerPlatform.instance.setPlaybackSpeed(id, speed);
   }
 
+  /// Sets player audio [volume] (`0.0` - `1.0`). Safely buffers before init.
   Future<void> setVolume(double volume) async {
     if (_isDisposed) return;
     _volume = volume;
@@ -203,6 +240,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     await VideoViewPlayerPlatform.instance.setVolume(id, volume);
   }
 
+  /// Sets whether the video should automatically loop upon completion.
   Future<void> setLooping(bool looping) async {
     if (_isDisposed) return;
     _looping = looping;
@@ -212,6 +250,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     await VideoViewPlayerPlatform.instance.setLooping(id, looping);
   }
 
+  /// Swaps the active video source to [url] without recreating native player instances.
   Future<void> setDataSource(String url) async {
     if (_isDisposed) return;
     if (_initializationFuture != null) {
@@ -260,6 +299,7 @@ class VideoViewPlayerController extends ValueNotifier<VideoViewValue> {
     _positionTimer = null;
   }
 
+  /// Releases native player instances, event listeners, and hardware texture resources.
   @override
   Future<void> dispose() async {
     _isDisposed = true;

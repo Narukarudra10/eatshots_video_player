@@ -5,6 +5,9 @@ import 'video_view_player_platform_interface.dart';
 
 /// An implementation of [VideoViewPlayerPlatform] that uses method channels.
 class MethodChannelVideoViewPlayer extends VideoViewPlayerPlatform {
+  /// Default constructor for [MethodChannelVideoViewPlayer].
+  MethodChannelVideoViewPlayer();
+
   /// The method channel used to interact with the native platform.
   @visibleForTesting
   final methodChannel = const MethodChannel('video_view_player');
