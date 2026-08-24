@@ -60,7 +60,7 @@ Add `video_view_player` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  video_view_player: ^0.2.3
+  video_view_player: ^0.2.4
 ```
 
 ### 2. Import

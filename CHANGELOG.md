@@ -1,3 +1,10 @@
+## 0.2.4
+
+* Dependencies & Environment:
+  * Audited and synchronized direct, dev, and transitive dependencies across root plugin and example project.
+  * Upgraded `vm_service` transitive dependency to `15.3.0`.
+  * Verified compatibility with latest Dart and Flutter SDK standards.
+
 ## 0.2.3
 
 * Android Kotlin & Media3 Optimizations:
